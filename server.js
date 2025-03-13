@@ -75,7 +75,7 @@ app.post('/register', async (req, res) => {
         const user = new User({ username, password: hashedPassword });
         await user.save();
         console.log('Registered user:', username);
-        req.session.user = { username };
+        req.session.user = { username, color: '#000000' }; // Default color
         res.redirect('/');
     } catch (err) {
         console.error('Register error:', err);
@@ -93,7 +93,7 @@ app.post('/login', async (req, res) => {
             return res.status(401).send('Invalid username or password');
         }
 
-        req.session.user = { username };
+        req.session.user = { username, color: req.session.user?.color || '#000000' };
         res.redirect('/');
     } catch (err) {
         console.error('Login error:', err);
@@ -108,7 +108,7 @@ app.get('/logout', (req, res) => {
 
 app.get('/username', (req, res) => {
     if (req.session.user) {
-        res.json({ username: req.session.user.username });
+        res.json({ username: req.session.user.username, color: req.session.user.color });
     } else {
         res.status(401).json({ error: 'Not logged in' });
     }
@@ -141,6 +141,17 @@ app.post('/change-username', async (req, res) => {
     }
 });
 
+app.post('/change-color', (req, res) => {
+    if (!req.session.user) return res.status(401).json({ success: false, message: 'Not logged in' });
+    const { color } = req.body;
+    if (!color || !/^#[0-9A-F]{6}$/i.test(color)) {
+        return res.status(400).json({ success: false, message: 'Invalid color' });
+    }
+
+    req.session.user.color = color;
+    res.json({ success: true });
+});
+
 let userCount = 0;
 let connectedUsers = {};
 const MAX_USERS = 20; // Limit concurrent users to reduce server load
@@ -159,9 +170,10 @@ io.on('connection', (socket) => {
     }
 
     const username = session.user.username;
+    const userColor = session.user.color || '#000000';
     userCount++;
     console.log('User connected:', username, 'userCount:', userCount);
-    connectedUsers[socket.id] = { username, id: socket.id };
+    connectedUsers[socket.id] = { username, id: socket.id, color: userColor };
     io.emit('user count', userCount);
     io.emit('user list', Object.values(connectedUsers));
 
@@ -180,7 +192,9 @@ io.on('connection', (socket) => {
             return;
         }
         console.log('Sending DM from:', msg.username, 'to:', msg.recipientId);
+        msg.senderId = socket.id;
         io.to(msg.recipientId).emit('dm message', { ...msg, isDM: true });
+        socket.emit('dm message', { ...msg, isDM: true });
     });
 
     socket.on('typing', (username) => {
@@ -201,6 +215,16 @@ io.on('connection', (socket) => {
                 io.emit('user list', Object.values(connectedUsers));
             }
         } else console.error('Invalid name change data:', data);
+    });
+
+    socket.on('color change', (data) => {
+        if (data && data.id && data.color) {
+            if (connectedUsers[data.id]) {
+                connectedUsers[data.id].color = data.color;
+                io.emit('user list', Object.values(connectedUsers));
+                io.emit('color change', data);
+            }
+        }
     });
 
     socket.on('disconnect', () => {
