@@ -40,6 +40,30 @@
             position: relative;
             z-index: 2;
         }
+        #tabs {
+            display: flex;
+            border-bottom: 1px solid #004d99;
+            background-color: #3a3a3a;
+        }
+        #tabs button {
+            padding: 10px 20px;
+            border: none;
+            background-color: #4a4a4a;
+            color: #e0e0e0;
+            cursor: pointer;
+            margin-right: 2px;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+        }
+        #tabs button.active {
+            background-color: #2f2f2f;
+            font-weight: bold;
+        }
+        #tab-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
         #messages {
             list-style-type: none;
             padding: 10px;
@@ -61,8 +85,20 @@
             border-left: 4px solid #0066cc;
         }
         #messages li.reply {
-            margin-left: 20px;
-            border-left: 2px solid #0066cc;
+            margin-left: 10px;
+            border-left: 4px solid #66b3ff;
+            background-color: #444;
+            position: relative;
+            padding-left: 20px;
+        }
+        #messages li.reply::before {
+            content: '↳';
+            position: absolute;
+            left: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #66b3ff;
+            font-weight: bold;
         }
         #messages li.system {
             color: #a0a0a0;
@@ -77,12 +113,16 @@
             color: #a0a0a0;
             display: block;
             margin-top: 4px;
+            font-style: italic;
+            padding-left: 10px;
+            border-left: 2px solid #66b3ff;
         }
         #messages li img {
             max-width: 200px;
             margin-top: 8px;
             border-radius: 3px;
             display: block;
+            loading: lazy;
         }
         #messages li .reply-button {
             position: absolute;
@@ -94,17 +134,21 @@
             border: none;
             border-radius: 3px;
             cursor: pointer;
+            transition: background-color 0.3s;
         }
         #messages li .reply-button:hover {
-            background-color: #555;
+            background-color: #88b;
+            transform: scale(1.1);
         }
         #reply-preview {
             display: none;
             margin-bottom: 5px;
             padding: 5px;
             background-color: #3a3a3a;
-            border-left: 2px solid #0066cc;
+            border-left: 4px solid #66b3ff;
             color: #a0a0a0;
+            border-radius: 3px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
         #chatbox {
             display: flex;
@@ -210,34 +254,39 @@
 </head>
 <body>
     <div id="chat-container">
-        <ul id="messages"></ul>
-        <div id="reply-preview"></div>
-        <div id="typing-indicator"></div>
-        <form id="chatbox">
-            <input id="input" autocomplete="off" placeholder="mr peacock is watching" />
-            <input type="color" id="color-picker" value="#007bff" title="Pick your name color" />
-            <select id="language-select" title="Receive messages in this language">
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="pt">Portuguese</option>
-                <option value="hi">Hindi</option>
-            </select>
-            <input type="file" id="image-input" accept="image/jpeg,image/png,image/gif" title="Attach an image (JPEG, PNG, GIF)" />
-            <img id="image-preview" alt="Preview" />
-            <span id="attachment-info"></span>
-            <input type="checkbox" id="dm-toggle" title="Toggle Direct Message">
-            <select id="recipient-select" title="Select recipient" disabled>
-                <option value="">All</option>
-            </select>
-            <button type="button" id="change-name">Change Name</button>
-            <a href="/logout"><button type="button" id="logout">Logout</button></a>
-            <button type="submit">Send To Ulis!</button>
-        </form>
+        <div id="tabs">
+            <button class="tab-button active" data-tab="main">Main Chat</button>
+        </div>
+        <div id="tab-content">
+            <ul id="messages"></ul>
+            <div id="reply-preview"></div>
+            <div id="typing-indicator"></div>
+            <form id="chatbox">
+                <input id="input" autocomplete="off" placeholder="mr peacock is watching" />
+                <input type="color" id="color-picker" value="#007bff" title="Pick your name color" />
+                <select id="language-select" title="Receive messages in this language">
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="hi">Hindi</option>
+                </select>
+                <input type="file" id="image-input" accept="image/jpeg,image/png,image/gif" title="Attach an image (JPEG, PNG, GIF)" />
+                <img id="image-preview" alt="Preview" />
+                <span id="attachment-info"></span>
+                <input type="checkbox" id="dm-toggle" title="Toggle Direct Message">
+                <select id="recipient-select" title="Select recipient" disabled>
+                    <option value="">All</option>
+                </select>
+                <button type="button" id="change-name">Change Name</button>
+                <a href="/logout"><button type="button" id="logout">Logout</button></a>
+                <button type="submit">Send To Ulis!</button>
+            </form>
+        </div>
     </div>
     <div id="user-count">0</div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
     <script>
         // Cookie functions (for chat history only)
         function setCookie(name, value, days) {
@@ -301,24 +350,49 @@
         const dmToggle = document.getElementById('dm-toggle');
         const recipientSelect = document.getElementById('recipient-select');
         const replyPreview = document.getElementById('reply-preview');
+        const tabs = document.getElementById('tabs');
+        const tabContent = document.getElementById('tab-content');
+
+        // Track DM conversations
+        let dmMessages = {};
+        let activeTab = 'main';
+        const MAX_MESSAGES = 50;
 
         // Load history
         messagesHistory.forEach(msg => {
-            const li = document.createElement('li');
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = msg.username + ': ';
-            nameSpan.style.color = msg.color;
-            li.appendChild(nameSpan);
-            li.appendChild(document.createTextNode(msg.text));
-            if (msg.replyTo) {
-                li.className = 'reply';
-                const replySpan = document.createElement('span');
-                replySpan.textContent = `Replying to ${msg.replyTo.username}: ${msg.replyTo.text}`;
-                replySpan.style.color = '#a0a0a0';
-                li.insertBefore(replySpan, li.firstChild);
+            const li = createMessageElement(msg);
+            if (msg.isDM) {
+                const recipient = msg.recipientId || 'unknown';
+                if (!dmMessages[recipient]) dmMessages[recipient] = [];
+                dmMessages[recipient].push(li);
+            } else {
+                appendMessage(li);
             }
-            messages.appendChild(li);
         });
+
+        function appendMessage(li) {
+            messages.appendChild(li);
+            if (messages.children.length > MAX_MESSAGES) {
+                messages.removeChild(messages.firstChild);
+            }
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function switchTab(tabId) {
+            activeTab = tabId;
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+            messages.innerHTML = '';
+            if (tabId === 'main') {
+                messagesHistory.filter(msg => !msg.isDM).forEach(msg => {
+                    const li = createMessageElement(msg);
+                    messages.appendChild(li);
+                });
+            } else {
+                dmMessages[tabId]?.forEach(li => messages.appendChild(li));
+            }
+            messages.scrollTop = messages.scrollHeight;
+        }
 
         socket.on('connect', () => {
             console.log('Connected to server');
@@ -362,7 +436,45 @@
             return languageSelect.value;
         }
 
-        imageInput.addEventListener('change', () => {
+        async function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const MAX_HEIGHT = 800;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height = Math.round((height * MAX_WIDTH) / width);
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width = Math.round((width * MAX_HEIGHT) / height);
+                                height = MAX_HEIGHT;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        canvas.toBlob((blob) => {
+                            resolve(blob);
+                        }, 'image/jpeg', 0.7);
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        imageInput.addEventListener('change', async () => {
             if (imageInput.files && imageInput.files[0]) {
                 const file = imageInput.files[0];
                 const fileSizeMB = file.size / (1024 * 1024);
@@ -374,14 +486,17 @@
                     return;
                 }
 
+                const compressedBlob = await compressImage(file);
+                const compressedFile = new File([compressedBlob], file.name, { type: 'image/jpeg' });
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     imagePreview.src = event.target.result;
                     imagePreview.style.display = 'inline-block';
-                    attachmentInfo.textContent = `Attached: ${file.name} (${fileSizeMB.toFixed(2)}MB)`;
+                    const compressedSizeMB = compressedBlob.size / (1024 * 1024);
+                    attachmentInfo.textContent = `Attached: ${file.name} (${compressedSizeMB.toFixed(2)}MB)`;
                     attachmentInfo.style.display = 'inline-block';
                 };
-                reader.readAsDataURL(file);
+                reader.readAsDataURL(compressedFile);
             } else {
                 imagePreview.style.display = 'none';
                 attachmentInfo.style.display = 'none';
@@ -389,8 +504,13 @@
         });
 
         let typingTimeout;
+        let lastTypingEmit = 0;
         input.addEventListener('input', () => {
-            socket.emit('typing', username);
+            const now = Date.now();
+            if (now - lastTypingEmit > 500) {
+                socket.emit('typing', username);
+                lastTypingEmit = now;
+            }
             clearTimeout(typingTimeout);
             typingTimeout = setTimeout(() => {
                 socket.emit('stop typing');
@@ -418,8 +538,7 @@
                     const li = document.createElement('li');
                     li.className = 'system';
                     li.textContent = `${oldUsername} changed their name to ${newUsername}`;
-                    messages.appendChild(li);
-                    messages.scrollTop = messages.scrollHeight;
+                    appendMessage(li);
                 } else {
                     alert('Failed to change username: ' + data.message);
                     username = oldUsername;
@@ -433,11 +552,17 @@
             } else {
                 recipientSelect.disabled = true;
                 recipientSelect.value = '';
+                switchTab('main');
             }
         });
 
-        form.addEventListener('submit', (e) => {
+        let lastMessageEmit = 0;
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const now = Date.now();
+            if (now - lastMessageEmit < 500) return; // Debounce
+            lastMessageEmit = now;
+
             const message = {
                 username: username,
                 text: input.value || '',
@@ -451,11 +576,23 @@
             }
 
             if (imageInput.files && imageInput.files[0]) {
+                const compressedBlob = await compressImage(imageInput.files[0]);
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     message.image = event.target.result;
                     if (dmToggle.checked && recipientSelect.value) {
-                        socket.emit('dm message', { ...message, recipientId: recipientSelect.value });
+                        message.recipientId = recipientSelect.value;
+                        message.isDM = true;
+                        socket.emit('dm message', message);
+                        if (!dmMessages[recipientSelect.value]) {
+                            dmMessages[recipientSelect.value] = [];
+                            const tabBtn = document.createElement('button');
+                            tabBtn.textContent = users[recipientSelect.value]?.username || 'DM';
+                            tabBtn.className = 'tab-button';
+                            tabBtn.dataset.tab = recipientSelect.value;
+                            tabBtn.onclick = () => switchTab(recipientSelect.value);
+                            tabs.appendChild(tabBtn);
+                        }
                     } else {
                         socket.emit('chat message', message);
                     }
@@ -467,10 +604,21 @@
                 reader.onerror = () => {
                     alert('Error reading image file!');
                 };
-                reader.readAsDataURL(imageInput.files[0]);
+                reader.readAsDataURL(compressedBlob);
             } else if (input.value) {
                 if (dmToggle.checked && recipientSelect.value) {
-                    socket.emit('dm message', { ...message, recipientId: recipientSelect.value });
+                    message.recipientId = recipientSelect.value;
+                    message.isDM = true;
+                    socket.emit('dm message', message);
+                    if (!dmMessages[recipientSelect.value]) {
+                        dmMessages[recipientSelect.value] = [];
+                        const tabBtn = document.createElement('button');
+                        tabBtn.textContent = users[recipientSelect.value]?.username || 'DM';
+                        tabBtn.className = 'tab-button';
+                        tabBtn.dataset.tab = recipientSelect.value;
+                        tabBtn.onclick = () => switchTab(recipientSelect.value);
+                        tabs.appendChild(tabBtn);
+                    }
                 } else {
                     socket.emit('chat message', message);
                 }
@@ -495,20 +643,16 @@
             replyPreview.textContent = '';
         }
 
-        socket.on('chat message', async (msg) => {
-            const targetLang = languageSelect.value;
-            const sourceLang = msg.language;
-            const translatedText = await translateText(msg.text, sourceLang, targetLang);
-
+        function createMessageElement(msg) {
             const li = document.createElement('li');
             const nameSpan = document.createElement('span');
-            nameSpan.textContent = msg.username + ': ';
+            nameSpan.textContent = (msg.isDM ? `[DM] ${msg.username}: ` : `${msg.username}: `);
             nameSpan.style.color = msg.color;
             li.appendChild(nameSpan);
 
-            if (translatedText) {
-                li.appendChild(document.createTextNode(translatedText));
-                if (translatedText !== msg.text) {
+            if (msg.text) {
+                li.appendChild(document.createTextNode(msg.text));
+                if (msg.translatedText && msg.translatedText !== msg.text) {
                     const originalSpan = document.createElement('span');
                     originalSpan.className = 'original';
                     originalSpan.textContent = `(${msg.text})`;
@@ -519,6 +663,7 @@
             if (msg.image) {
                 const img = document.createElement('img');
                 img.src = msg.image;
+                img.setAttribute('loading', 'lazy');
                 li.appendChild(img);
             }
 
@@ -536,9 +681,20 @@
             replyButton.onclick = () => setReply(msg.id, msg.username, msg.text);
             li.appendChild(replyButton);
 
-            messages.appendChild(li);
-            messages.scrollTop = messages.scrollHeight;
-            if (msg.text) saveMessage(msg);
+            return li;
+        }
+
+        socket.on('chat message', async (msg) => {
+            const targetLang = languageSelect.value;
+            const sourceLang = msg.language;
+            const translatedText = await translateText(msg.text, sourceLang, targetLang);
+            msg.translatedText = translatedText;
+
+            const li = createMessageElement(msg);
+            if (!msg.isDM || msg.recipientId === socket.id) {
+                appendMessage(li);
+            }
+            if (msg.text && !msg.isDM) saveMessage(msg);
         });
 
         socket.on('dm message', async (msg) => {
@@ -546,46 +702,23 @@
                 const targetLang = languageSelect.value;
                 const sourceLang = msg.language;
                 const translatedText = await translateText(msg.text, sourceLang, targetLang);
+                msg.translatedText = translatedText;
 
-                const li = document.createElement('li');
-                li.className = 'dm';
-                const nameSpan = document.createElement('span');
-                nameSpan.textContent = `[DM] ${msg.username}: `;
-                nameSpan.style.color = msg.color;
-                li.appendChild(nameSpan);
-
-                if (translatedText) {
-                    li.appendChild(document.createTextNode(translatedText));
-                    if (translatedText !== msg.text) {
-                        const originalSpan = document.createElement('span');
-                        originalSpan.className = 'original';
-                        originalSpan.textContent = `(${msg.text})`;
-                        li.appendChild(originalSpan);
-                    }
+                const li = createMessageElement(msg);
+                if (!dmMessages[msg.senderId]) {
+                    dmMessages[msg.senderId] = [];
+                    const tabBtn = document.createElement('button');
+                    tabBtn.textContent = msg.username;
+                    tabBtn.className = 'tab-button';
+                    tabBtn.dataset.tab = msg.senderId;
+                    tabBtn.onclick = () => switchTab(msg.senderId);
+                    tabs.appendChild(tabBtn);
                 }
+                dmMessages[msg.senderId].push(li);
 
-                if (msg.image) {
-                    const img = document.createElement('img');
-                    img.src = msg.image;
-                    li.appendChild(img);
+                if (activeTab === msg.senderId) {
+                    appendMessage(li);
                 }
-
-                if (msg.replyTo) {
-                    li.className += ' reply';
-                    const replySpan = document.createElement('span');
-                    replySpan.textContent = `Replying to ${msg.replyTo.username}: ${msg.replyTo.text}`;
-                    replySpan.style.color = '#a0a0a0';
-                    li.insertBefore(replySpan, li.firstChild);
-                }
-
-                const replyButton = document.createElement('button');
-                replyButton.textContent = 'Reply';
-                replyButton.className = 'reply-button';
-                replyButton.onclick = () => setReply(msg.id, msg.username, msg.text);
-                li.appendChild(replyButton);
-
-                messages.appendChild(li);
-                messages.scrollTop = messages.scrollHeight;
                 if (msg.text) saveMessage(msg);
             }
         });
@@ -602,8 +735,7 @@
             const li = document.createElement('li');
             li.className = 'system';
             li.textContent = `${data.oldUsername} changed their name to ${data.newUsername}`;
-            messages.appendChild(li);
-            messages.scrollTop = messages.scrollHeight;
+            appendMessage(li);
         });
 
         function saveMessage(msg) {
@@ -612,4 +744,5 @@
             setCookie('chatHistory', JSON.stringify(messagesHistory), 30);
         }
     </script>
+</body>
 </html>

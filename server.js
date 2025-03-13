@@ -2,11 +2,12 @@ const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
-    maxHttpBufferSize: 20 * 1024 * 1024
+    maxHttpBufferSize: 5 * 1024 * 1024 // Reduced to 5MB for performance
 });
 const bcrypt = require('bcrypt');
 const session = require('express-session');
 const sharedsession = require('express-socket.io-session');
+const mongoose = require('mongoose');
 
 const sessionMiddleware = session({
     secret: 'your-secret-key',
@@ -19,7 +20,19 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 
-// Share session with Socket.IO
+// Connect to MongoDB Atlas (replace with your connection string)
+mongoose.connect('mongodb+srv://admin:MySecurePass123!@cluster0.abcdef.mongodb.net/UlisChat?retryWrites=true&w=majority', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}).then(() => console.log('Connected to MongoDB')).catch(err => console.error('MongoDB connection error:', err));
+
+// Define User schema
+const userSchema = new mongoose.Schema({
+    username: { type: String, unique: true, required: true },
+    password: { type: String, required: true }
+});
+const User = mongoose.model('User', userSchema);
+
 io.use(sharedsession(sessionMiddleware, {
     autoSave: true
 }));
@@ -35,26 +48,39 @@ app.get('/', (req, res) => {
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).send('Username and password are required');
-    if (users[username]) return res.status(400).send('Username already exists');
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    users[username] = { username, password: hashedPassword };
-    console.log('Registered user:', username);
-    req.session.user = { username };
-    res.redirect('/');
+    try {
+        const existingUser = await User.findOne({ username });
+        if (existingUser) return res.status(400).send('Username already exists');
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const user = new User({ username, password: hashedPassword });
+        await user.save();
+        console.log('Registered user:', username);
+        req.session.user = { username };
+        res.redirect('/');
+    } catch (err) {
+        console.error('Register error:', err);
+        res.status(500).send('Server error');
+    }
 });
 
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).send('Username and password are required');
 
-    const user = users[username];
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-        return res.status(401).send('Invalid username or password');
-    }
+    try {
+        const user = await User.findOne({ username });
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            return res.status(401).send('Invalid username or password');
+        }
 
-    req.session.user = { username };
-    res.redirect('/');
+        req.session.user = { username };
+        res.redirect('/');
+    } catch (err) {
+        console.error('Login error:', err);
+        res.status(500).send('Server error');
+    }
 });
 
 app.get('/logout', (req, res) => {
@@ -76,27 +102,40 @@ app.post('/change-username', async (req, res) => {
     if (!newUsername || newUsername.trim() === '') {
         return res.status(400).json({ success: false, message: 'Invalid username' });
     }
-    if (users[newUsername] && newUsername !== req.session.user.username) {
-        return res.status(400).json({ success: false, message: 'Username already taken' });
+
+    try {
+        const existingUser = await User.findOne({ username: newUsername });
+        if (existingUser && newUsername !== req.session.user.username) {
+            return res.status(400).json({ success: false, message: 'Username already taken' });
+        }
+
+        const oldUsername = req.session.user.username;
+        const user = await User.findOne({ username: oldUsername });
+        if (!user) return res.status(400).json({ success: false, message: 'User not found' });
+
+        user.username = newUsername;
+        await user.save();
+        req.session.user.username = newUsername;
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Change username error:', err);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
-
-    const oldUsername = req.session.user.username;
-    const userData = users[oldUsername]; // Store user data before deleting
-    if (!userData) return res.status(400).json({ success: false, message: 'User not found' });
-    delete users[oldUsername];
-    users[newUsername] = { username: newUsername, password: userData.password };
-    req.session.user.username = newUsername;
-    res.json({ success: true });
 });
-
-const users = {};
 
 let userCount = 0;
 let connectedUsers = {};
+const MAX_USERS = 20; // Limit concurrent users to reduce server load
 
 io.on('connection', (socket) => {
     const session = socket.handshake.session;
     if (!session || !session.user) {
+        socket.disconnect();
+        return;
+    }
+
+    if (userCount >= MAX_USERS) {
+        socket.emit('chat message', { username: 'System', text: 'Server is full. Please try again later.' });
         socket.disconnect();
         return;
     }
@@ -123,7 +162,7 @@ io.on('connection', (socket) => {
             return;
         }
         console.log('Sending DM from:', msg.username, 'to:', msg.recipientId);
-        io.to(msg.recipientId).emit('dm message', msg);
+        io.to(msg.recipientId).emit('dm message', { ...msg, isDM: true });
     });
 
     socket.on('typing', (username) => {
