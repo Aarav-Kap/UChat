@@ -2,746 +2,417 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Ulis Chat</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UlisChat</title>
     <style>
         body {
-            font-family: 'Chalkboard', 'Comic Sans MS', sans-serif;
+            font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #1a1a1a;
-            color: #e0e0e0;
-            height: 100vh;
+            background-color: #f0f0f0;
             display: flex;
-            flex-direction: column;
-            position: relative;
+            height: 100vh;
         }
-        body::before {
-            content: '';
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 80px;
-            height: 80px;
-            background-image: url('https://raw.githubusercontent.com/Aarav-Kap/Uchat/main/ulis-logo.png');
-            background-size: contain;
-            background-repeat: no-repeat;
-            opacity: 0.1;
-            z-index: 1;
+        #sidebar {
+            width: 200px;
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        #sidebar h3 {
+            margin-top: 0;
+        }
+        #user-list {
+            list-style: none;
+            padding: 0;
+        }
+        #user-list li {
+            padding: 5px;
+            cursor: pointer;
+        }
+        #user-list li:hover {
+            background-color: #555;
         }
         #chat-container {
-            flex-grow: 1;
+            flex: 1;
             display: flex;
             flex-direction: column;
-            border: 1px solid #004d99;
-            border-radius: 5px;
-            background-color: #2f2f2f;
-            margin: 10px;
-            position: relative;
-            z-index: 2;
         }
         #tabs {
             display: flex;
-            border-bottom: 1px solid #004d99;
-            background-color: #3a3a3a;
+            background-color: #ddd;
+            padding: 5px;
         }
         #tabs button {
             padding: 10px 20px;
+            margin-right: 5px;
             border: none;
-            background-color: #4a4a4a;
-            color: #e0e0e0;
+            background-color: #4CAF50;
+            color: white;
             cursor: pointer;
-            margin-right: 2px;
-            border-top-left-radius: 5px;
-            border-top-right-radius: 5px;
+            border-radius: 5px;
+        }
+        #tabs button:hover {
+            background-color: #45a049;
         }
         #tabs button.active {
-            background-color: #2f2f2f;
-            font-weight: bold;
+            background-color: #357a38;
         }
-        #tab-content {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-        }
-        #messages {
-            list-style-type: none;
+        #chat {
+            flex: 1;
             padding: 10px;
-            margin: 0;
-            flex-grow: 1;
             overflow-y: auto;
-            border-bottom: 1px solid #004d99;
-        }
-        #messages li {
-            padding: 8px;
-            margin: 5px 0;
-            background-color: #4a4a4a;
-            border-radius: 3px;
-            word-wrap: break-word;
-            position: relative;
-        }
-        #messages li.dm {
-            background-color: #3a3a3a;
-            border-left: 4px solid #0066cc;
-        }
-        #messages li.reply {
-            margin-left: 10px;
-            border-left: 4px solid #66b3ff;
-            background-color: #444;
-            position: relative;
-            padding-left: 20px;
-        }
-        #messages li.reply::before {
-            content: '↳';
-            position: absolute;
-            left: 5px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #66b3ff;
-            font-weight: bold;
-        }
-        #messages li.system {
-            color: #a0a0a0;
-            font-style: italic;
-            text-align: center;
-        }
-        #messages li span {
-            font-weight: bold;
-        }
-        #messages li .original {
-            font-size: 0.8em;
-            color: #a0a0a0;
-            display: block;
-            margin-top: 4px;
-            font-style: italic;
-            padding-left: 10px;
-            border-left: 2px solid #66b3ff;
-        }
-        #messages li img {
-            max-width: 200px;
-            margin-top: 8px;
-            border-radius: 3px;
-            display: block;
-            loading: lazy;
-        }
-        #messages li .reply-button {
-            position: absolute;
-            right: 5px;
-            top: 5px;
-            padding: 2px 5px;
-            font-size: 0.7em;
-            background-color: #666;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        #messages li .reply-button:hover {
-            background-color: #88b;
-            transform: scale(1.1);
-        }
-        #reply-preview {
+            background-color: white;
             display: none;
-            margin-bottom: 5px;
-            padding: 5px;
-            background-color: #3a3a3a;
-            border-left: 4px solid #66b3ff;
-            color: #a0a0a0;
-            border-radius: 3px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
-        #chatbox {
+        #chat.active {
+            display: block;
+        }
+        #chat div {
+            margin-bottom: 10px; /* Added spacing between messages */
+        }
+        #chat .message {
+            padding: 8px;
+            border-radius: 5px;
+            max-width: 70%;
+            margin-bottom: 5px; /* Added spacing within message groups */
+        }
+        #chat .message.sent {
+            background-color: #007BFF;
+            color: white;
+            margin-left: auto;
+        }
+        #chat .message.received {
+            background-color: #e0e0e0;
+            margin-right: auto;
+        }
+        #chat .message.dm {
+            background-color: #FFD700;
+        }
+        #chat img {
+            max-width: 200px;
+            border-radius: 5px;
+            margin-bottom: 5px; /* Added spacing below images */
+        }
+        #input-container {
             display: flex;
             padding: 10px;
-            gap: 5px;
-            background-color: #2f2f2f;
-            flex-wrap: wrap;
-            align-items: center;
+            background-color: #ddd;
         }
-        #input {
-            flex-grow: 1;
-            padding: 8px;
-            border: 1px solid #004d99;
-            border-radius: 3px;
-            outline: none;
-            background-color: #3a3a3a;
-            color: #e0e0e0;
-        }
-        #color-picker, #language-select, #image-input, #dm-toggle, #recipient-select {
-            width: 40px;
-            padding: 0;
-            border: 1px solid #004d99;
-            border-radius: 3px;
-            background-color: #3a3a3a;
-            cursor: pointer;
-        }
-        #language-select, #recipient-select {
-            width: auto;
-            padding: 8px;
-        }
-        #image-preview {
-            max-width: 50px;
-            margin-left: 5px;
-            display: none;
-        }
-        #attachment-info {
-            color: #a0a0a0;
-            font-size: 0.9em;
-            margin-left: 5px;
-            display: none;
-        }
-        button {
-            padding: 8px 15px;
+        #message-input {
+            flex: 1;
+            padding: 10px;
             border: none;
-            background-color: #004d99;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+        #send-button, #image-button {
+            padding: 10px;
+            background-color: #4CAF50;
             color: white;
-            border-radius: 3px;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
         }
-        button:hover {
-            background-color: #003366;
+        #send-button:hover, #image-button:hover {
+            background-color: #45a049;
         }
-        #change-name, #logout {
-            padding: 8px 10px;
-            font-size: 0.8em;
-            background-color: #666;
-        }
-        #change-name:hover, #logout:hover {
-            background-color: #555;
+        #image-input {
+            display: none;
         }
         #typing-indicator {
-            padding: 5px 10px;
+            color: #888;
             font-style: italic;
-            color: #a0a0a0;
+            margin: 5px 10px;
         }
-        #user-count {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background-color: #004d99;
+        #username-container {
+            padding: 10px;
+            background-color: #333;
             color: white;
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 0.9em;
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 5px;
-            z-index: 2;
         }
-        #user-count::before {
-            content: '👥';
-            font-size: 1.2em;
+        #change-username {
+            cursor: pointer;
+            color: #007BFF;
         }
-        @media (max-width: 600px) {
-            #chat-container {
-                margin: 0;
-                border: none;
-                border-radius: 0;
-            }
-            #messages {
-                min-height: 50vh;
-            }
-            #chatbox {
-                position: sticky;
-                bottom: 0;
-                gap: 10px;
-            }
-            #input, #color-picker, #language-select, #image-input, #dm-toggle, #recipient-select {
-                margin-bottom: 0;
-            }
+        #change-username:hover {
+            text-decoration: underline;
+        }
+        .dm-tab {
+            display: none;
+            width: 100%;
+            height: calc(100vh - 150px);
+        }
+        .dm-tab.active {
+            display: block;
         }
     </style>
 </head>
 <body>
+    <div id="sidebar">
+        <h3>Online Users (<span id="user-count">0</span>)</h3>
+        <ul id="user-list"></ul>
+    </div>
     <div id="chat-container">
-        <div id="tabs">
-            <button class="tab-button active" data-tab="main">Main Chat</button>
+        <div id="username-container">
+            <span id="current-username">Loading...</span>
+            <span id="change-username" onclick="changeUsername()">Change Username</span>
         </div>
-        <div id="tab-content">
-            <ul id="messages"></ul>
-            <div id="reply-preview"></div>
-            <div id="typing-indicator"></div>
-            <form id="chatbox">
-                <input id="input" autocomplete="off" placeholder="mr peacock is watching" />
-                <input type="color" id="color-picker" value="#007bff" title="Pick your name color" />
-                <select id="language-select" title="Receive messages in this language">
-                    <option value="en">English</option>
-                    <option value="es">Spanish</option>
-                    <option value="fr">French</option>
-                    <option value="pt">Portuguese</option>
-                    <option value="hi">Hindi</option>
-                </select>
-                <input type="file" id="image-input" accept="image/jpeg,image/png,image/gif" title="Attach an image (JPEG, PNG, GIF)" />
-                <img id="image-preview" alt="Preview" />
-                <span id="attachment-info"></span>
-                <input type="checkbox" id="dm-toggle" title="Toggle Direct Message">
-                <select id="recipient-select" title="Select recipient" disabled>
-                    <option value="">All</option>
-                </select>
-                <button type="button" id="change-name">Change Name</button>
-                <a href="/logout"><button type="button" id="logout">Logout</button></a>
-                <button type="submit">Send To Ulis!</button>
-            </form>
+        <div id="tabs">
+            <button class="tab-button active" onclick="switchTab('main')">Main Chat</button>
+        </div>
+        <div id="chat" class="active"></div>
+        <div id="dm-tabs"></div>
+        <div id="typing-indicator"></div>
+        <div id="input-container">
+            <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeydown="if(event.key === 'Enter') sendMessage()">
+            <input type="file" id="image-input" accept="image/*" onchange="sendImage()">
+            <button id="send-button" onclick="sendMessage()">Send</button>
+            <button id="image-button" onclick="document.getElementById('image-input').click()">Image</button>
         </div>
     </div>
-    <div id="user-count">0</div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Cookie functions (for chat history only)
-        function setCookie(name, value, days) {
-            const date = new Date();
-            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-            const expires = "expires=" + date.toUTCString();
-            document.cookie = name + "=" + value + ";" + expires + ";path=/";
-        }
+        const socket = io();
+        let username = '';
+        let typingTimeout;
+        let activeTab = 'main';
+        let dmTabs = {};
 
-        function getCookie(name) {
-            const nameEQ = name + "=";
-            const ca = document.cookie.split(';');
-            for (let i = 0; i < ca.length; i++) {
-                let c = ca[i];
-                while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-            }
-            return null;
-        }
-
-        // Load username from session
+        // Fetch current username
         fetch('/username')
             .then(res => res.json())
             .then(data => {
-                if (data.username) {
-                    username = data.username;
-                } else {
+                if (data.error) {
                     window.location.href = '/';
+                } else {
+                    username = data.username;
+                    document.getElementById('current-username').textContent = `Welcome, ${username}`;
+                    socket.emit('chat message', { username: 'System', text: `${username} has joined the chat` });
                 }
             })
-            .catch(() => window.location.href = '/');
-
-        let username;
-
-        // Load limited chat history (text only)
-        let messagesHistory = [];
-        const savedHistory = getCookie('chatHistory');
-        if (savedHistory) {
-            try {
-                messagesHistory = JSON.parse(savedHistory)
-                    .filter(msg => msg.text)
-                    .slice(-10);
-            } catch (e) {
-                console.error('Failed to parse chat history:', e);
-                messagesHistory = [];
-            }
-        }
-
-        const socket = io();
-        const form = document.getElementById('chatbox');
-        const input = document.getElementById('input');
-        const colorPicker = document.getElementById('color-picker');
-        const languageSelect = document.getElementById('language-select');
-        const imageInput = document.getElementById('image-input');
-        const imagePreview = document.getElementById('image-preview');
-        const attachmentInfo = document.getElementById('attachment-info');
-        const messages = document.getElementById('messages');
-        const typingIndicator = document.getElementById('typing-indicator');
-        const userCount = document.getElementById('user-count');
-        const changeNameButton = document.getElementById('change-name');
-        const dmToggle = document.getElementById('dm-toggle');
-        const recipientSelect = document.getElementById('recipient-select');
-        const replyPreview = document.getElementById('reply-preview');
-        const tabs = document.getElementById('tabs');
-        const tabContent = document.getElementById('tab-content');
-
-        // Track DM conversations
-        let dmMessages = {};
-        let activeTab = 'main';
-        const MAX_MESSAGES = 50;
-
-        // Load history
-        messagesHistory.forEach(msg => {
-            const li = createMessageElement(msg);
-            if (msg.isDM) {
-                const recipient = msg.recipientId || 'unknown';
-                if (!dmMessages[recipient]) dmMessages[recipient] = [];
-                dmMessages[recipient].push(li);
-            } else {
-                appendMessage(li);
-            }
-        });
-
-        function appendMessage(li) {
-            messages.appendChild(li);
-            if (messages.children.length > MAX_MESSAGES) {
-                messages.removeChild(messages.firstChild);
-            }
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        function switchTab(tabId) {
-            activeTab = tabId;
-            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-            document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-            messages.innerHTML = '';
-            if (tabId === 'main') {
-                messagesHistory.filter(msg => !msg.isDM).forEach(msg => {
-                    const li = createMessageElement(msg);
-                    messages.appendChild(li);
-                });
-            } else {
-                dmMessages[tabId]?.forEach(li => messages.appendChild(li));
-            }
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
-
-        socket.on('connect_error', (error) => {
-            console.error('Connection error:', error.message);
-        });
+            .catch(err => {
+                console.error('Error fetching username:', err);
+                window.location.href = '/';
+            });
 
         socket.on('user count', (count) => {
-            console.log('Received user count:', count);
-            userCount.textContent = count;
+            document.getElementById('user-count').textContent = count;
         });
 
         socket.on('user list', (users) => {
-            recipientSelect.innerHTML = '<option value="">All</option>';
+            const userList = document.getElementById('user-list');
+            userList.innerHTML = '';
             users.forEach(user => {
-                if (user.id !== socket.id) {
-                    const option = document.createElement('option');
-                    option.value = user.id;
-                    option.textContent = user.username;
-                    recipientSelect.appendChild(option);
-                }
-            });
-            recipientSelect.disabled = false;
-        });
-
-        async function translateText(text, sourceLang, targetLang) {
-            if (sourceLang === targetLang) return text;
-            try {
-                const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${sourceLang}|${targetLang}`);
-                const data = await response.json();
-                return data.responseData.translatedText || text;
-            } catch (error) {
-                console.error('Translation error:', error);
-                return text;
-            }
-        }
-
-        async function detectLanguage(text) {
-            return languageSelect.value;
-        }
-
-        async function compressImage(file) {
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 800;
-                        const MAX_HEIGHT = 800;
-                        let width = img.width;
-                        let height = img.height;
-
-                        if (width > height) {
-                            if (width > MAX_WIDTH) {
-                                height = Math.round((height * MAX_WIDTH) / width);
-                                width = MAX_WIDTH;
-                            }
-                        } else {
-                            if (height > MAX_HEIGHT) {
-                                width = Math.round((width * MAX_HEIGHT) / height);
-                                height = MAX_HEIGHT;
-                            }
-                        }
-
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        canvas.toBlob((blob) => {
-                            resolve(blob);
-                        }, 'image/jpeg', 0.7);
-                    };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            });
-        }
-
-        imageInput.addEventListener('change', async () => {
-            if (imageInput.files && imageInput.files[0]) {
-                const file = imageInput.files[0];
-                const fileSizeMB = file.size / (1024 * 1024);
-                if (fileSizeMB > 10) {
-                    alert('Image too large! Max size is 10MB.');
-                    imageInput.value = '';
-                    imagePreview.style.display = 'none';
-                    attachmentInfo.style.display = 'none';
-                    return;
-                }
-
-                const compressedBlob = await compressImage(file);
-                const compressedFile = new File([compressedBlob], file.name, { type: 'image/jpeg' });
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    imagePreview.src = event.target.result;
-                    imagePreview.style.display = 'inline-block';
-                    const compressedSizeMB = compressedBlob.size / (1024 * 1024);
-                    attachmentInfo.textContent = `Attached: ${file.name} (${compressedSizeMB.toFixed(2)}MB)`;
-                    attachmentInfo.style.display = 'inline-block';
-                };
-                reader.readAsDataURL(compressedFile);
-            } else {
-                imagePreview.style.display = 'none';
-                attachmentInfo.style.display = 'none';
-            }
-        });
-
-        let typingTimeout;
-        let lastTypingEmit = 0;
-        input.addEventListener('input', () => {
-            const now = Date.now();
-            if (now - lastTypingEmit > 500) {
-                socket.emit('typing', username);
-                lastTypingEmit = now;
-            }
-            clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => {
-                socket.emit('stop typing');
-            }, 1000);
-        });
-
-        changeNameButton.addEventListener('click', () => {
-            let newUsername = prompt('Enter your new username (required):', username);
-            while (!newUsername || newUsername.trim() === '') {
-                newUsername = prompt('Enter your new username (required, cannot be empty):', username);
-                if (!newUsername || newUsername.trim() === '') {
-                    alert('New username is required!');
-                }
-            }
-            newUsername = newUsername.trim();
-            const oldUsername = username;
-            username = newUsername;
-            fetch('/change-username', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ newUsername })
-            }).then(res => res.json()).then(data => {
-                if (data.success) {
-                    socket.emit('name change', { oldUsername, newUsername, id: socket.id });
+                if (user.username !== username) {
                     const li = document.createElement('li');
-                    li.className = 'system';
-                    li.textContent = `${oldUsername} changed their name to ${newUsername}`;
-                    appendMessage(li);
-                } else {
-                    alert('Failed to change username: ' + data.message);
-                    username = oldUsername;
+                    li.textContent = user.username;
+                    li.onclick = () => startDM(user.id, user.username);
+                    userList.appendChild(li);
                 }
             });
         });
 
-        dmToggle.addEventListener('change', () => {
-            if (dmToggle.checked) {
-                recipientSelect.disabled = false;
-            } else {
-                recipientSelect.disabled = true;
-                recipientSelect.value = '';
-                switchTab('main');
+        socket.on('chat message', (msg) => {
+            if (activeTab === 'main' || (dmTabs[msg.recipientId || msg.senderId] && dmTabs[msg.recipientId || msg.senderId].chat.contains(document.activeElement))) {
+                const chat = document.getElementById('chat');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'} ${msg.isDM ? 'dm' : ''}`;
+                const content = msg.image ? `<img src="${msg.image}" alt="Image">` : msg.text;
+                messageDiv.innerHTML = `<strong>${msg.username}:</strong> ${content}`;
+                chat.appendChild(messageDiv);
+                chat.scrollTop = chat.scrollHeight;
             }
         });
 
-        let lastMessageEmit = 0;
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const now = Date.now();
-            if (now - lastMessageEmit < 500) return; // Debounce
-            lastMessageEmit = now;
-
-            const message = {
-                username: username,
-                text: input.value || '',
-                color: colorPicker.value,
-                language: languageSelect.value,
-                id: Date.now().toString()
-            };
-
-            if (replyTo) {
-                message.replyTo = replyTo;
-            }
-
-            if (imageInput.files && imageInput.files[0]) {
-                const compressedBlob = await compressImage(imageInput.files[0]);
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    message.image = event.target.result;
-                    if (dmToggle.checked && recipientSelect.value) {
-                        message.recipientId = recipientSelect.value;
-                        message.isDM = true;
-                        socket.emit('dm message', message);
-                        if (!dmMessages[recipientSelect.value]) {
-                            dmMessages[recipientSelect.value] = [];
-                            const tabBtn = document.createElement('button');
-                            tabBtn.textContent = users[recipientSelect.value]?.username || 'DM';
-                            tabBtn.className = 'tab-button';
-                            tabBtn.dataset.tab = recipientSelect.value;
-                            tabBtn.onclick = () => switchTab(recipientSelect.value);
-                            tabs.appendChild(tabBtn);
-                        }
-                    } else {
-                        socket.emit('chat message', message);
-                    }
-                    imageInput.value = '';
-                    imagePreview.style.display = 'none';
-                    attachmentInfo.style.display = 'none';
-                    clearReply();
-                };
-                reader.onerror = () => {
-                    alert('Error reading image file!');
-                };
-                reader.readAsDataURL(compressedBlob);
-            } else if (input.value) {
-                if (dmToggle.checked && recipientSelect.value) {
-                    message.recipientId = recipientSelect.value;
-                    message.isDM = true;
-                    socket.emit('dm message', message);
-                    if (!dmMessages[recipientSelect.value]) {
-                        dmMessages[recipientSelect.value] = [];
-                        const tabBtn = document.createElement('button');
-                        tabBtn.textContent = users[recipientSelect.value]?.username || 'DM';
-                        tabBtn.className = 'tab-button';
-                        tabBtn.dataset.tab = recipientSelect.value;
-                        tabBtn.onclick = () => switchTab(recipientSelect.value);
-                        tabs.appendChild(tabBtn);
-                    }
-                } else {
-                    socket.emit('chat message', message);
+        socket.on('dm message', (msg) => {
+            if (msg.recipientId === socket.id || msg.username === username) {
+                let tab = dmTabs[msg.recipientId || msg.senderId];
+                if (!tab) {
+                    createDMTab(msg.recipientId || msg.senderId, msg.username);
+                    tab = dmTabs[msg.recipientId || msg.senderId];
                 }
-                clearReply();
-            }
-
-            input.value = '';
-        });
-
-        let replyTo = null;
-
-        function setReply(messageId, replyUsername, replyText) {
-            replyTo = { id: messageId, username: replyUsername, text: replyText };
-            replyPreview.style.display = 'block';
-            replyPreview.textContent = `Replying to ${replyUsername}: ${replyText}`;
-            input.focus();
-        }
-
-        function clearReply() {
-            replyTo = null;
-            replyPreview.style.display = 'none';
-            replyPreview.textContent = '';
-        }
-
-        function createMessageElement(msg) {
-            const li = document.createElement('li');
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = (msg.isDM ? `[DM] ${msg.username}: ` : `${msg.username}: `);
-            nameSpan.style.color = msg.color;
-            li.appendChild(nameSpan);
-
-            if (msg.text) {
-                li.appendChild(document.createTextNode(msg.text));
-                if (msg.translatedText && msg.translatedText !== msg.text) {
-                    const originalSpan = document.createElement('span');
-                    originalSpan.className = 'original';
-                    originalSpan.textContent = `(${msg.text})`;
-                    li.appendChild(originalSpan);
+                const chat = tab.chat;
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'} dm`;
+                const content = msg.image ? `<img src="${msg.image}" alt="Image">` : msg.text;
+                messageDiv.innerHTML = `<strong>${msg.username} (DM):</strong> ${content}`;
+                chat.appendChild(messageDiv);
+                chat.scrollTop = chat.scrollHeight;
+                if (msg.username !== username) {
+                    window.open(window.location.href + `?dm=${msg.senderId}`, `_blank`);
                 }
-            }
-
-            if (msg.image) {
-                const img = document.createElement('img');
-                img.src = msg.image;
-                img.setAttribute('loading', 'lazy');
-                li.appendChild(img);
-            }
-
-            if (msg.replyTo) {
-                li.className = 'reply';
-                const replySpan = document.createElement('span');
-                replySpan.textContent = `Replying to ${msg.replyTo.username}: ${msg.replyTo.text}`;
-                replySpan.style.color = '#a0a0a0';
-                li.insertBefore(replySpan, li.firstChild);
-            }
-
-            const replyButton = document.createElement('button');
-            replyButton.textContent = 'Reply';
-            replyButton.className = 'reply-button';
-            replyButton.onclick = () => setReply(msg.id, msg.username, msg.text);
-            li.appendChild(replyButton);
-
-            return li;
-        }
-
-        socket.on('chat message', async (msg) => {
-            const targetLang = languageSelect.value;
-            const sourceLang = msg.language;
-            const translatedText = await translateText(msg.text, sourceLang, targetLang);
-            msg.translatedText = translatedText;
-
-            const li = createMessageElement(msg);
-            if (!msg.isDM || msg.recipientId === socket.id) {
-                appendMessage(li);
-            }
-            if (msg.text && !msg.isDM) saveMessage(msg);
-        });
-
-        socket.on('dm message', async (msg) => {
-            if (msg.recipientId === socket.id) {
-                const targetLang = languageSelect.value;
-                const sourceLang = msg.language;
-                const translatedText = await translateText(msg.text, sourceLang, targetLang);
-                msg.translatedText = translatedText;
-
-                const li = createMessageElement(msg);
-                if (!dmMessages[msg.senderId]) {
-                    dmMessages[msg.senderId] = [];
-                    const tabBtn = document.createElement('button');
-                    tabBtn.textContent = msg.username;
-                    tabBtn.className = 'tab-button';
-                    tabBtn.dataset.tab = msg.senderId;
-                    tabBtn.onclick = () => switchTab(msg.senderId);
-                    tabs.appendChild(tabBtn);
-                }
-                dmMessages[msg.senderId].push(li);
-
-                if (activeTab === msg.senderId) {
-                    appendMessage(li);
-                }
-                if (msg.text) saveMessage(msg);
             }
         });
 
         socket.on('typing', (username) => {
-            typingIndicator.textContent = `${username} is typing...`;
+            if (activeTab === 'main') {
+                document.getElementById('typing-indicator').textContent = `${username} is typing...`;
+            } else {
+                Object.values(dmTabs).forEach(tab => {
+                    if (tab.chat.contains(document.activeElement)) {
+                        tab.typingIndicator.textContent = `${username} is typing...`;
+                    }
+                });
+            }
         });
 
         socket.on('stop typing', () => {
-            typingIndicator.textContent = '';
+            if (activeTab === 'main') {
+                document.getElementById('typing-indicator').textContent = '';
+            } else {
+                Object.values(dmTabs).forEach(tab => {
+                    tab.typingIndicator.textContent = '';
+                });
+            }
         });
 
         socket.on('name change', (data) => {
-            const li = document.createElement('li');
-            li.className = 'system';
-            li.textContent = `${data.oldUsername} changed their name to ${data.newUsername}`;
-            appendMessage(li);
+            if (data.oldUsername === username) {
+                username = data.newUsername;
+                document.getElementById('current-username').textContent = `Welcome, ${username}`;
+            }
+            const chat = document.getElementById('chat');
+            const messageDiv = document.createElement('div');
+            messageDiv.innerHTML = `<em>${data.oldUsername} changed their name to ${data.newUsername}</em>`;
+            chat.appendChild(messageDiv);
+            chat.scrollTop = chat.scrollHeight;
+            Object.values(dmTabs).forEach(tab => {
+                tab.chat.appendChild(messageDiv.cloneNode(true));
+                tab.chat.scrollTop = tab.chat.scrollHeight;
+            });
         });
 
-        function saveMessage(msg) {
-            messagesHistory.push(msg);
-            if (messagesHistory.length > 10) messagesHistory.shift();
-            setCookie('chatHistory', JSON.stringify(messagesHistory), 30);
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if (text) {
+                const recipientId = input.dataset.recipientId;
+                const msg = { username, text };
+                if (recipientId) {
+                    msg.recipientId = recipientId;
+                    socket.emit('dm message', msg);
+                    window.open(window.location.href + `?dm=${recipientId}`, '_blank');
+                } else {
+                    socket.emit('chat message', msg);
+                }
+                input.value = '';
+                input.dataset.recipientId = '';
+                socket.emit('stop typing');
+            }
+        }
+
+        function sendImage() {
+            const input = document.getElementById('image-input');
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const image = e.target.result;
+                    const recipientId = document.getElementById('message-input').dataset.recipientId;
+                    const msg = { username, image };
+                    if (recipientId) {
+                        msg.recipientId = recipientId;
+                        socket.emit('dm message', msg);
+                        window.open(window.location.href + `?dm=${recipientId}`, '_blank');
+                    } else {
+                        socket.emit('chat message', msg);
+                    }
+                    input.value = '';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function startDM(recipientId, recipientUsername) {
+            document.getElementById('message-input').dataset.recipientId = recipientId;
+            document.getElementById('message-input').placeholder = `DM to ${recipientUsername}...`;
+            window.open(window.location.href + `?dm=${recipientId}`, '_blank');
+        }
+
+        function createDMTab(recipientId, recipientUsername) {
+            const dmTabsDiv = document.getElementById('dm-tabs');
+            const tabDiv = document.createElement('div');
+            tabDiv.id = `dm-tab-${recipientId}`;
+            tabDiv.className = 'dm-tab';
+            tabDiv.innerHTML = `
+                <div id="tabs">
+                    <button class="tab-button" onclick="switchTab('dm-${recipientId}')">DM with ${recipientUsername}</button>
+                </div>
+                <div id="chat-dm-${recipientId}" class="chat"></div>
+                <div id="typing-indicator-dm-${recipientId}" class="typing-indicator"></div>
+            `;
+            dmTabsDiv.appendChild(tabDiv);
+            dmTabs[recipientId] = {
+                chat: document.getElementById(`chat-dm-${recipientId}`),
+                typingIndicator: document.getElementById(`typing-indicator-dm-${recipientId}`)
+            };
+        }
+
+        function switchTab(tabId) {
+            const tabs = document.querySelectorAll('.tab-button');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            document.getElementById('chat').classList.remove('active');
+            document.querySelectorAll('.dm-tab').forEach(tab => tab.classList.remove('active'));
+
+            if (tabId === 'main') {
+                document.getElementById('chat').classList.add('active');
+                document.querySelector(`button[onclick="switchTab('main')"]`).classList.add('active');
+                activeTab = 'main';
+                document.getElementById('message-input').dataset.recipientId = '';
+                document.getElementById('message-input').placeholder = 'Type a message...';
+            } else {
+                const dmTab = document.getElementById(tabId.replace('dm-', 'dm-tab-'));
+                dmTab.classList.add('active');
+                document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('active');
+                activeTab = tabId;
+                const recipientId = tabId.replace('dm-', '');
+                document.getElementById('message-input').dataset.recipientId = recipientId;
+                document.getElementById('message-input').placeholder = `DM to ${Object.values(dmTabs).find(tab => tab.chat.id === `chat-dm-${recipientId}`).chat.previousElementSibling.textContent.match(/DM with (.*)/)[1]}...`;
+            }
+        }
+
+        function handleTyping() {
+            socket.emit('typing', username);
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                socket.emit('stop typing');
+            }, 1000);
+        }
+
+        function changeUsername() {
+            const newUsername = prompt('Enter new username:');
+            if (newUsername && newUsername.trim()) {
+                fetch('/change-username', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ newUsername: newUsername.trim() })
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            socket.emit('name change', { oldUsername: username, newUsername: newUsername.trim(), id: socket.id });
+                        } else {
+                            alert(data.message || 'Failed to change username');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error changing username:', err);
+                        alert('Error changing username');
+                    });
+            }
+        }
+
+        // Handle URL parameter for DM tabs
+        const urlParams = new URLSearchParams(window.location.search);
+        const dmParam = urlParams.get('dm');
+        if (dmParam) {
+            startDM(dmParam, document.querySelector('#user-list li')?.textContent || 'Unknown');
+            switchTab(`dm-${dmParam}`);
         }
     </script>
 </body>
