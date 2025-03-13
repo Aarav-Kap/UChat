@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login to Ulis Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: 'Chalkboard', 'Comic Sans MS', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        body::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 80px;
+            height: 80px;
+            background-image: url('https://raw.githubusercontent.com/Aarav-Kap/Uchat/main/ulis-logo.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            opacity: 0.1;
+            z-index: 1;
+        }
+        .auth-container {
+            background-color: #2f2f2f;
+            padding: 20px;
+            border: 1px solid #004d99;
+            border-radius: 5px;
+            text-align: center;
+            z-index: 2;
+        }
+        input[type="text"], input[type="password"] {
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #004d99;
+            border-radius: 3px;
+            background-color: #3a3a3a;
+            color: #e0e0e0;
+            width: 200px;
+        }
+        button {
+            padding: 8px 15px;
+            border: none;
+            background-color: #004d99;
+            color: white;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #003366;
+        }
+        .error {
+            color: #ff5555;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <h2>Ulis Chat</h2>
+        <form action="/login" method="POST">
+            <input type="text" name="username" placeholder="Username" required><br>
+            <input type="password" name="password" placeholder="Password" required><br>
+            <button type="submit">Login</button>
+        </form>
+        <form action="/register" method="POST">
+            <input type="text" name="username" placeholder="Username" required><br>
+            <input type="password" name="password" placeholder="Password" required><br>
+            <button type="submit">Register</button>
+        </form>
+        <p class="error"><%= error || '' %></p>
+    </div>
+</body>
+</html>
