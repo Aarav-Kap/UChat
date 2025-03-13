@@ -6,14 +6,22 @@ const io = require('socket.io')(http, {
 });
 const bcrypt = require('bcrypt');
 const session = require('express-session');
+const sharedsession = require('express-socket.io-session');
+
+const sessionMiddleware = session({
+    secret: 'your-secret-key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000 }
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(session({
-    secret: 'your-secret-key', // Change this in production to a strong, unique key
-    resave: false,
-    saveUninitialized: false,
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000 } // 30 days
+app.use(sessionMiddleware);
+
+// Share session with Socket.IO
+io.use(sharedsession(sessionMiddleware, {
+    autoSave: true
 }));
 
 app.get('/', (req, res) => {
@@ -32,6 +40,7 @@ app.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     users[username] = { username, password: hashedPassword };
     console.log('Registered user:', username);
+    req.session.user = { username };
     res.redirect('/');
 });
 
@@ -72,8 +81,10 @@ app.post('/change-username', async (req, res) => {
     }
 
     const oldUsername = req.session.user.username;
+    const userData = users[oldUsername]; // Store user data before deleting
+    if (!userData) return res.status(400).json({ success: false, message: 'User not found' });
     delete users[oldUsername];
-    users[newUsername] = { username: newUsername, password: users[oldUsername].password };
+    users[newUsername] = { username: newUsername, password: userData.password };
     req.session.user.username = newUsername;
     res.json({ success: true });
 });
@@ -84,12 +95,13 @@ let userCount = 0;
 let connectedUsers = {};
 
 io.on('connection', (socket) => {
-    if (!socket.request.session.user) {
+    const session = socket.handshake.session;
+    if (!session || !session.user) {
         socket.disconnect();
         return;
     }
 
-    const username = socket.request.session.user.username;
+    const username = session.user.username;
     userCount++;
     console.log('User connected:', username, 'userCount:', userCount);
     connectedUsers[socket.id] = { username, id: socket.id };
