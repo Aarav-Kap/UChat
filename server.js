@@ -2,18 +2,24 @@ const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
-    maxHttpBufferSize: 5 * 1024 * 1024 // Reduced to 5MB for performance
+    maxHttpBufferSize: 5 * 1024 * 1024 // 5MB for image uploads
 });
 const bcrypt = require('bcrypt');
 const session = require('express-session');
 const sharedsession = require('express-socket.io-session');
 const mongoose = require('mongoose');
+const MongoStore = require('connect-mongo'); // Added for session storage
 
+// Session middleware with MongoDB store
 const sessionMiddleware = session({
     secret: 'your-secret-key',
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000 }
+    store: MongoStore.create({
+        mongoUrl: 'mongodb+srv://Admin:<MySecurePass123!>@cluster0.0g3yi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', // Replace with your MongoDB connection string
+        collectionName: 'sessions'
+    }),
+    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000 } // 30 days
 });
 
 app.use(express.json());
@@ -21,7 +27,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 
 // Connect to MongoDB Atlas (replace with your connection string)
-mongoose.connect('mongodb+srv://admin:MySecurePass123!@cluster0.abcdef.mongodb.net/UlisChat?retryWrites=true&w=majority', {
+mongoose.connect('mongodb+srv://Admin:<MySecurePass123!>@cluster0.0g3yi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(() => console.log('Connected to MongoDB')).catch(err => console.error('MongoDB connection error:', err));
