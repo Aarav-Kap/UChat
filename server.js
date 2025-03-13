@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
-    maxHttpBufferSize: 50 * 1024 * 1024
+    maxHttpBufferSize: 50 * 1024 * 1024 // Keep 50MB buffer for now, but 10MB limit will reduce strain
 });
 
 app.get('/', (req, res) => {
@@ -26,6 +26,10 @@ io.on('connection', (socket) => {
 
     socket.on('stop typing', () => {
         socket.broadcast.emit('stop typing');
+    });
+
+    socket.on('name change', (data) => {
+        io.emit('name change', data);
     });
 
     socket.on('disconnect', () => {

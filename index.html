@@ -9,15 +9,17 @@
             font-family: 'Chalkboard', 'Comic Sans MS', sans-serif; /* Schooly font */
             margin: 0;
             padding: 0;
-            background-color: #1a1a1a;
+            background-color: #1a1a1a; /* Dark base color */
             color: #e0e0e0;
             height: 100vh;
             display: flex;
             flex-direction: column;
+            /* Adjusted logo display */
             background-image: url('https://raw.githubusercontent.com/Aarav-Kap/Uchat/main/ulis-logo.png');
-            background-repeat: repeat-y;
-            background-position: left, right;
-            background-size: 100px auto;
+            background-repeat: no-repeat;
+            background-position: 20px 20px; /* Top-left corner */
+            background-size: 100px auto; /* Slightly larger for visibility */
+            opacity: 0.3; /* More visible but still subtle */
         }
         #chat-container {
             flex-grow: 1;
@@ -25,8 +27,9 @@
             flex-direction: column;
             border: 1px solid #004d99; /* ULIS blue */
             border-radius: 5px;
-            background-color: #2a2a2a;
+            background-color: #2a2a2a; /* Darker chat container */
             margin: 10px;
+            position: relative;
         }
         #messages {
             list-style-type: none;
@@ -39,9 +42,14 @@
         #messages li {
             padding: 8px;
             margin: 5px 0;
-            background-color: #3a3a3a;
+            background-color: #3a3a3a; /* Dark message bubble */
             border-radius: 3px;
             word-wrap: break-word;
+        }
+        #messages li.system {
+            color: #a0a0a0;
+            font-style: italic;
+            text-align: center;
         }
         #messages li span {
             font-weight: bold;
@@ -64,6 +72,7 @@
             gap: 5px;
             background-color: #2a2a2a;
             flex-wrap: wrap;
+            align-items: center;
         }
         #input {
             flex-grow: 1;
@@ -107,6 +116,14 @@
         }
         button:hover {
             background-color: #003366;
+        }
+        #change-name {
+            padding: 8px 10px;
+            font-size: 0.8em;
+            background-color: #666;
+        }
+        #change-name:hover {
+            background-color: #555;
         }
         #typing-indicator {
             padding: 5px 10px;
@@ -167,7 +184,8 @@
             <input type="file" id="image-input" accept="image/jpeg,image/png,image/gif" title="Attach an image (JPEG, PNG, GIF)" />
             <img id="image-preview" alt="Preview" />
             <span id="attachment-info"></span>
-            <button>Send To Ulis!</button>
+            <button type="button" id="change-name">Change Name</button>
+            <button type="submit">Send To Ulis!</button>
         </form>
     </div>
     <div id="user-count">0</div>
@@ -193,8 +211,16 @@
             return null;
         }
 
-        // Load username from cookie or prompt
-        let username = getCookie('username') || prompt('Enter your username:') || 'Anonymous';
+        // Enforce username input
+        let username = getCookie('username');
+        while (!username) {
+            username = prompt('Enter your username (required):');
+            if (!username || username.trim() === '') {
+                username = null; // Force the loop to continue if empty or canceled
+                alert('Username is required!');
+            }
+        }
+        username = username.trim();
         setCookie('username', username, 30);
 
         const socket = io();
@@ -208,20 +234,26 @@
         const messages = document.getElementById('messages');
         const typingIndicator = document.getElementById('typing-indicator');
         const userCount = document.getElementById('user-count');
+        const changeNameButton = document.getElementById('change-name');
 
         // Load chat history from cookies
         const savedMessages = getCookie('chatHistory') ? JSON.parse(getCookie('chatHistory')) : [];
         savedMessages.forEach(msg => {
             const li = document.createElement('li');
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = msg.username + ': ';
-            nameSpan.style.color = msg.color;
-            li.appendChild(nameSpan);
-            if (msg.text) li.appendChild(document.createTextNode(msg.text));
-            if (msg.image) {
-                const img = document.createElement('img');
-                img.src = msg.image;
-                li.appendChild(img);
+            if (msg.system) {
+                li.className = 'system';
+                li.textContent = msg.text;
+            } else {
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = msg.username + ': ';
+                nameSpan.style.color = msg.color;
+                li.appendChild(nameSpan);
+                if (msg.text) li.appendChild(document.createTextNode(msg.text));
+                if (msg.image) {
+                    const img = document.createElement('img');
+                    img.src = msg.image;
+                    li.appendChild(img);
+                }
             }
             messages.appendChild(li);
         });
@@ -246,8 +278,8 @@
             if (imageInput.files && imageInput.files[0]) {
                 const file = imageInput.files[0];
                 const fileSizeMB = file.size / (1024 * 1024);
-                if (fileSizeMB > 30) {
-                    alert('Image too large! Max size is 30MB.');
+                if (fileSizeMB > 10) { // Reduced to 10MB
+                    alert('Image too large! Max size is 10MB.');
                     imageInput.value = '';
                     imagePreview.style.display = 'none';
                     attachmentInfo.style.display = 'none';
@@ -276,6 +308,32 @@
             typingTimeout = setTimeout(() => {
                 socket.emit('stop typing');
             }, 1000);
+        });
+
+        // Change name button
+        changeNameButton.addEventListener('click', () => {
+            let newUsername = prompt('Enter your new username (required):', username);
+            while (!newUsername || newUsername.trim() === '') {
+                newUsername = prompt('Enter your new username (required, cannot be empty):', username);
+                if (!newUsername || newUsername.trim() === '') {
+                    alert('New username is required!');
+                }
+            }
+            newUsername = newUsername.trim();
+            const oldUsername = username;
+            username = newUsername;
+            setCookie('username', username, 30);
+            socket.emit('name change', { oldUsername, newUsername });
+            const systemMessage = {
+                system: true,
+                text: `${oldUsername} changed their name to ${newUsername}`
+            };
+            saveMessage(systemMessage);
+            const li = document.createElement('li');
+            li.className = 'system';
+            li.textContent = systemMessage.text;
+            messages.appendChild(li);
+            messages.scrollTop = messages.scrollHeight;
         });
 
         form.addEventListener('submit', (e) => {
@@ -356,6 +414,19 @@
 
         socket.on('user count', (count) => {
             userCount.textContent = count;
+        });
+
+        socket.on('name change', (data) => {
+            const systemMessage = {
+                system: true,
+                text: `${data.oldUsername} changed their name to ${data.newUsername}`
+            };
+            saveMessage(systemMessage);
+            const li = document.createElement('li');
+            li.className = 'system';
+            li.textContent = systemMessage.text;
+            messages.appendChild(li);
+            messages.scrollTop = messages.scrollHeight;
         });
     </script>
 </body>
