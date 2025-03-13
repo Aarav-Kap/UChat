@@ -6,17 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
-            font-family: 'Chalkboard', 'Comic Sans MS', sans-serif; /* Schooly font */
+            font-family: 'Chalkboard', 'Comic Sans MS', sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #1a1a1a; /* Dark base color */
+            background-color: #1a1a1a;
             color: #e0e0e0;
             height: 100vh;
             display: flex;
             flex-direction: column;
-            position: relative; /* For logo positioning */
+            position: relative;
         }
-        /* Add logo as a pseudo-element to control opacity separately */
         body::before {
             content: '';
             position: absolute;
@@ -27,19 +26,19 @@
             background-image: url('https://raw.githubusercontent.com/Aarav-Kap/Uchat/main/ulis-logo.png');
             background-size: contain;
             background-repeat: no-repeat;
-            opacity: 0.1; /* Very subtle logo */
+            opacity: 0.1;
             z-index: 1;
         }
         #chat-container {
             flex-grow: 1;
             display: flex;
             flex-direction: column;
-            border: 1px solid #004d99; /* ULIS blue */
+            border: 1px solid #004d99;
             border-radius: 5px;
-            background-color: #2f2f2f; /* Slightly lighter for contrast */
+            background-color: #2f2f2f;
             margin: 10px;
             position: relative;
-            z-index: 2; /* Above logo */
+            z-index: 2;
         }
         #messages {
             list-style-type: none;
@@ -52,9 +51,18 @@
         #messages li {
             padding: 8px;
             margin: 5px 0;
-            background-color: #4a4a4a; /* Lighter message bubble */
+            background-color: #4a4a4a;
             border-radius: 3px;
             word-wrap: break-word;
+            position: relative;
+        }
+        #messages li.dm {
+            background-color: #3a3a3a;
+            border-left: 4px solid #0066cc;
+        }
+        #messages li.reply {
+            margin-left: 20px;
+            border-left: 2px solid #0066cc;
         }
         #messages li.system {
             color: #a0a0a0;
@@ -76,6 +84,28 @@
             border-radius: 3px;
             display: block;
         }
+        #messages li .reply-button {
+            position: absolute;
+            right: 5px;
+            top: 5px;
+            padding: 2px 5px;
+            font-size: 0.7em;
+            background-color: #666;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        #messages li .reply-button:hover {
+            background-color: #555;
+        }
+        #reply-preview {
+            display: none;
+            margin-bottom: 5px;
+            padding: 5px;
+            background-color: #3a3a3a;
+            border-left: 2px solid #0066cc;
+            color: #a0a0a0;
+        }
         #chatbox {
             display: flex;
             padding: 10px;
@@ -90,10 +120,10 @@
             border: 1px solid #004d99;
             border-radius: 3px;
             outline: none;
-            background-color: #3a3a3a; /* Lighter input */
+            background-color: #3a3a3a;
             color: #e0e0e0;
         }
-        #color-picker, #language-select, #image-input {
+        #color-picker, #language-select, #image-input, #dm-toggle, #recipient-select {
             width: 40px;
             padding: 0;
             border: 1px solid #004d99;
@@ -101,7 +131,7 @@
             background-color: #3a3a3a;
             cursor: pointer;
         }
-        #language-select {
+        #language-select, #recipient-select {
             width: auto;
             padding: 8px;
         }
@@ -127,12 +157,12 @@
         button:hover {
             background-color: #003366;
         }
-        #change-name {
+        #change-name, #logout {
             padding: 8px 10px;
             font-size: 0.8em;
             background-color: #666;
         }
-        #change-name:hover {
+        #change-name:hover, #logout:hover {
             background-color: #555;
         }
         #typing-indicator {
@@ -172,7 +202,7 @@
                 bottom: 0;
                 gap: 10px;
             }
-            #input, #color-picker, #language-select, #image-input {
+            #input, #color-picker, #language-select, #image-input, #dm-toggle, #recipient-select {
                 margin-bottom: 0;
             }
         }
@@ -181,6 +211,7 @@
 <body>
     <div id="chat-container">
         <ul id="messages"></ul>
+        <div id="reply-preview"></div>
         <div id="typing-indicator"></div>
         <form id="chatbox">
             <input id="input" autocomplete="off" placeholder="mr peacock is watching" />
@@ -195,7 +226,12 @@
             <input type="file" id="image-input" accept="image/jpeg,image/png,image/gif" title="Attach an image (JPEG, PNG, GIF)" />
             <img id="image-preview" alt="Preview" />
             <span id="attachment-info"></span>
+            <input type="checkbox" id="dm-toggle" title="Toggle Direct Message">
+            <select id="recipient-select" title="Select recipient" disabled>
+                <option value="">All</option>
+            </select>
             <button type="button" id="change-name">Change Name</button>
+            <a href="/logout"><button type="button" id="logout">Logout</button></a>
             <button type="submit">Send To Ulis!</button>
         </form>
     </div>
@@ -203,16 +239,52 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Enforce username input (no cookies)
-        let username = null;
-        while (!username) {
-            username = prompt('Enter your username (required):');
-            if (!username || username.trim() === '') {
-                username = null;
-                alert('Username is required!');
+        // Cookie functions (for chat history only)
+        function setCookie(name, value, days) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            const expires = "expires=" + date.toUTCString();
+            document.cookie = name + "=" + value + ";" + expires + ";path=/";
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        // Load username from session
+        fetch('/username')
+            .then(res => res.json())
+            .then(data => {
+                if (data.username) {
+                    username = data.username;
+                } else {
+                    window.location.href = '/';
+                }
+            })
+            .catch(() => window.location.href = '/');
+
+        let username;
+
+        // Load limited chat history (text only)
+        let messagesHistory = [];
+        const savedHistory = getCookie('chatHistory');
+        if (savedHistory) {
+            try {
+                messagesHistory = JSON.parse(savedHistory)
+                    .filter(msg => msg.text)
+                    .slice(-10);
+            } catch (e) {
+                console.error('Failed to parse chat history:', e);
+                messagesHistory = [];
             }
         }
-        username = username.trim();
 
         const socket = io();
         const form = document.getElementById('chatbox');
@@ -226,8 +298,28 @@
         const typingIndicator = document.getElementById('typing-indicator');
         const userCount = document.getElementById('user-count');
         const changeNameButton = document.getElementById('change-name');
+        const dmToggle = document.getElementById('dm-toggle');
+        const recipientSelect = document.getElementById('recipient-select');
+        const replyPreview = document.getElementById('reply-preview');
 
-        // Debug Socket.IO connection
+        // Load history
+        messagesHistory.forEach(msg => {
+            const li = document.createElement('li');
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = msg.username + ': ';
+            nameSpan.style.color = msg.color;
+            li.appendChild(nameSpan);
+            li.appendChild(document.createTextNode(msg.text));
+            if (msg.replyTo) {
+                li.className = 'reply';
+                const replySpan = document.createElement('span');
+                replySpan.textContent = `Replying to ${msg.replyTo.username}: ${msg.replyTo.text}`;
+                replySpan.style.color = '#a0a0a0';
+                li.insertBefore(replySpan, li.firstChild);
+            }
+            messages.appendChild(li);
+        });
+
         socket.on('connect', () => {
             console.log('Connected to server');
         });
@@ -237,8 +329,21 @@
         });
 
         socket.on('user count', (count) => {
-            console.log('Received user count:', count); // Debug
+            console.log('Received user count:', count);
             userCount.textContent = count;
+        });
+
+        socket.on('user list', (users) => {
+            recipientSelect.innerHTML = '<option value="">All</option>';
+            users.forEach(user => {
+                if (user.id !== socket.id) {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = user.username;
+                    recipientSelect.appendChild(option);
+                }
+            });
+            recipientSelect.disabled = false;
         });
 
         async function translateText(text, sourceLang, targetLang) {
@@ -283,7 +388,6 @@
             }
         });
 
-        // Typing indicator
         let typingTimeout;
         input.addEventListener('input', () => {
             socket.emit('typing', username);
@@ -293,7 +397,6 @@
             }, 1000);
         });
 
-        // Change name button
         changeNameButton.addEventListener('click', () => {
             let newUsername = prompt('Enter your new username (required):', username);
             while (!newUsername || newUsername.trim() === '') {
@@ -305,12 +408,32 @@
             newUsername = newUsername.trim();
             const oldUsername = username;
             username = newUsername;
-            socket.emit('name change', { oldUsername, newUsername });
-            const li = document.createElement('li');
-            li.className = 'system';
-            li.textContent = `${oldUsername} changed their name to ${newUsername}`;
-            messages.appendChild(li);
-            messages.scrollTop = messages.scrollHeight;
+            fetch('/change-username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ newUsername })
+            }).then(res => res.json()).then(data => {
+                if (data.success) {
+                    socket.emit('name change', { oldUsername, newUsername, id: socket.id });
+                    const li = document.createElement('li');
+                    li.className = 'system';
+                    li.textContent = `${oldUsername} changed their name to ${newUsername}`;
+                    messages.appendChild(li);
+                    messages.scrollTop = messages.scrollHeight;
+                } else {
+                    alert('Failed to change username: ' + data.message);
+                    username = oldUsername;
+                }
+            });
+        });
+
+        dmToggle.addEventListener('change', () => {
+            if (dmToggle.checked) {
+                recipientSelect.disabled = false;
+            } else {
+                recipientSelect.disabled = true;
+                recipientSelect.value = '';
+            }
         });
 
         form.addEventListener('submit', (e) => {
@@ -319,28 +442,58 @@
                 username: username,
                 text: input.value || '',
                 color: colorPicker.value,
-                language: languageSelect.value
+                language: languageSelect.value,
+                id: Date.now().toString() // Unique ID for replies
             };
+
+            if (replyTo) {
+                message.replyTo = replyTo;
+            }
 
             if (imageInput.files && imageInput.files[0]) {
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     message.image = event.target.result;
-                    socket.emit('chat message', message);
+                    if (dmToggle.checked && recipientSelect.value) {
+                        socket.emit('dm message', { ...message, recipientId: recipientSelect.value });
+                    } else {
+                        socket.emit('chat message', message);
+                    }
                     imageInput.value = '';
                     imagePreview.style.display = 'none';
                     attachmentInfo.style.display = 'none';
+                    clearReply();
                 };
                 reader.onerror = () => {
                     alert('Error reading image file!');
                 };
                 reader.readAsDataURL(imageInput.files[0]);
             } else if (input.value) {
-                socket.emit('chat message', message);
+                if (dmToggle.checked && recipientSelect.value) {
+                    socket.emit('dm message', { ...message, recipientId: recipientSelect.value });
+                } else {
+                    socket.emit('chat message', message);
+                }
+                clearReply();
             }
 
             input.value = '';
         });
+
+        let replyTo = null;
+
+        function setReply(messageId, replyUsername, replyText) {
+            replyTo = { id: messageId, username: replyUsername, text: replyText };
+            replyPreview.style.display = 'block';
+            replyPreview.textContent = `Replying to ${replyUsername}: ${replyText}`;
+            input.focus();
+        }
+
+        function clearReply() {
+            replyTo = null;
+            replyPreview.style.display = 'none';
+            replyPreview.textContent = '';
+        }
 
         socket.on('chat message', async (msg) => {
             const targetLang = languageSelect.value;
@@ -369,8 +522,72 @@
                 li.appendChild(img);
             }
 
+            if (msg.replyTo) {
+                li.className = 'reply';
+                const replySpan = document.createElement('span');
+                replySpan.textContent = `Replying to ${msg.replyTo.username}: ${msg.replyTo.text}`;
+                replySpan.style.color = '#a0a0a0';
+                li.insertBefore(replySpan, li.firstChild);
+            }
+
+            const replyButton = document.createElement('button');
+            replyButton.textContent = 'Reply';
+            replyButton.className = 'reply-button';
+            replyButton.onclick = () => setReply(msg.id, msg.username, msg.text);
+            li.appendChild(replyButton);
+
             messages.appendChild(li);
             messages.scrollTop = messages.scrollHeight;
+            if (msg.text) saveMessage(msg);
+        });
+
+        socket.on('dm message', async (msg) => {
+            if (msg.recipientId === socket.id) {
+                const targetLang = languageSelect.value;
+                const sourceLang = msg.language;
+                const translatedText = await translateText(msg.text, sourceLang, targetLang);
+
+                const li = document.createElement('li');
+                li.className = 'dm';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = `[DM] ${msg.username}: `;
+                nameSpan.style.color = msg.color;
+                li.appendChild(nameSpan);
+
+                if (translatedText) {
+                    li.appendChild(document.createTextNode(translatedText));
+                    if (translatedText !== msg.text) {
+                        const originalSpan = document.createElement('span');
+                        originalSpan.className = 'original';
+                        originalSpan.textContent = `(${msg.text})`;
+                        li.appendChild(originalSpan);
+                    }
+                }
+
+                if (msg.image) {
+                    const img = document.createElement('img');
+                    img.src = msg.image;
+                    li.appendChild(img);
+                }
+
+                if (msg.replyTo) {
+                    li.className += ' reply';
+                    const replySpan = document.createElement('span');
+                    replySpan.textContent = `Replying to ${msg.replyTo.username}: ${msg.replyTo.text}`;
+                    replySpan.style.color = '#a0a0a0';
+                    li.insertBefore(replySpan, li.firstChild);
+                }
+
+                const replyButton = document.createElement('button');
+                replyButton.textContent = 'Reply';
+                replyButton.className = 'reply-button';
+                replyButton.onclick = () => setReply(msg.id, msg.username, msg.text);
+                li.appendChild(replyButton);
+
+                messages.appendChild(li);
+                messages.scrollTop = messages.scrollHeight;
+                if (msg.text) saveMessage(msg);
+            }
         });
 
         socket.on('typing', (username) => {
@@ -388,5 +605,11 @@
             messages.appendChild(li);
             messages.scrollTop = messages.scrollHeight;
         });
+
+        function saveMessage(msg) {
+            messagesHistory.push(msg);
+            if (messagesHistory.length > 10) messagesHistory.shift();
+            setCookie('chatHistory', JSON.stringify(messagesHistory), 30);
+        }
     </script>
 </html>
