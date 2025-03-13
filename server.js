@@ -8,7 +8,7 @@ const bcrypt = require('bcrypt');
 const session = require('express-session');
 const sharedsession = require('express-socket.io-session');
 const mongoose = require('mongoose');
-const MongoStore = require('connect-mongo'); // Added for session storage
+const MongoStore = require('connect-mongo');
 
 // Session middleware with MongoDB store
 const sessionMiddleware = session({
@@ -16,7 +16,7 @@ const sessionMiddleware = session({
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-        mongoUrl: 'mongodb+srv://Admin:<MySecurePass123!>@cluster0.0g3yi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', // Replace with your MongoDB connection string
+        mongoUrl: 'mongodb+srv://admin:Aarav123%2E@cluster0.0g3yi.mongodb.net/ulis_chat?retryWrites=true&w=majority&appName=Cluster0',
         collectionName: 'sessions'
     }),
     cookie: { maxAge: 30 * 24 * 60 * 60 * 1000 } // 30 days
@@ -26,11 +26,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 
-// Connect to MongoDB Atlas (replace with your connection string)
-mongoose.connect('mongodb+srv://Admin:<MySecurePass123!>@cluster0.0g3yi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then(() => console.log('Connected to MongoDB')).catch(err => console.error('MongoDB connection error:', err));
+// Connect to MongoDB Atlas
+(async () => {
+    try {
+        await mongoose.connect('mongodb+srv://admin:Aarav123%2E@cluster0.0g3yi.mongodb.net/ulis_chat?retryWrites=true&w=majority&appName=Cluster0', {
+            useNewUrlParser: true,
+            useUnifiedTopology: true
+        });
+        console.log('Connected to MongoDB');
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
+        process.exit(1); // Exit the process if MongoDB connection fails
+    }
+})();
+
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error after initial connect:', err);
+});
 
 // Define User schema
 const userSchema = new mongoose.Schema({
