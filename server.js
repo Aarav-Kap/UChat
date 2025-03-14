@@ -20,7 +20,7 @@ const sessionMiddleware = session({
         collectionName: 'sessions',
         ttl: 30 * 24 * 60 * 60 // 30 days
     }),
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production' } // 30 days
+    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production' } // 30 days, secure only in production
 });
 
 app.use(express.json());
@@ -108,8 +108,11 @@ app.post('/register', async (req, res) => {
         const user = new User({ username, password: hashedPassword });
         await user.save();
         req.session.user = { username, color: '#000000', language: 'en' };
-        console.log('User registered:', username);
-        res.redirect('/');
+        req.session.save(err => {
+            if (err) console.error('Session save error:', err);
+            console.log('User registered and session saved:', username);
+            res.redirect('/');
+        });
     } catch (err) {
         console.error('Register error:', err);
         res.status(500).send('Server error');
@@ -129,8 +132,11 @@ app.post('/login', async (req, res) => {
         }
 
         req.session.user = { username, color: req.session.user?.color || '#000000', language: req.session.user?.language || 'en' };
-        console.log('User logged in:', username);
-        res.redirect('/');
+        req.session.save(err => {
+            if (err) console.error('Session save error:', err);
+            console.log('User logged in and session saved:', username);
+            res.redirect('/');
+        });
     } catch (err) {
         console.error('Login error:', err);
         res.status(500).send('Server error');
@@ -178,8 +184,11 @@ app.post('/change-username', async (req, res) => {
         // Update ChatHistory
         await ChatHistory.updateMany({ username: oldUsername }, { username: newUsername });
         req.session.user.username = newUsername;
-        console.log('Username changed from', oldUsername, 'to', newUsername);
-        res.json({ success: true });
+        req.session.save(err => {
+            if (err) console.error('Session save error:', err);
+            console.log('Username changed from', oldUsername, 'to', newUsername);
+            res.json({ success: true });
+        });
     } catch (err) {
         console.error('Change username error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
@@ -195,8 +204,11 @@ app.post('/change-color', (req, res) => {
     }
 
     req.session.user.color = color;
-    console.log('Color changed for', req.session.user.username, 'to', color);
-    res.json({ success: true });
+    req.session.save(err => {
+        if (err) console.error('Session save error:', err);
+        console.log('Color changed for', req.session.user.username, 'to', color);
+        res.json({ success: true });
+    });
 });
 
 app.post('/update-language', (req, res) => {
@@ -208,8 +220,11 @@ app.post('/update-language', (req, res) => {
     }
 
     req.session.user.language = language;
-    console.log('Language updated for', req.session.user.username, 'to', language);
-    res.json({ success: true });
+    req.session.save(err => {
+        if (err) console.error('Session save error:', err);
+        console.log('Language updated for', req.session.user.username, 'to', language);
+        res.json({ success: true });
+    });
 });
 
 let userCount = 0;

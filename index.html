@@ -17,6 +17,15 @@
             color: #333;
             overflow: hidden;
         }
+        #error-message {
+            display: none;
+            color: #e41b1b;
+            font-size: 1em;
+            padding: 10px;
+            text-align: center;
+            background: #ffe6e6;
+            border-bottom: 1px solid #e41b1b;
+        }
         #sidebar {
             width: 240px;
             background: #2f2f2f;
@@ -174,15 +183,6 @@
         }
         #color-picker { width: 60px; height: 60px; cursor: pointer; }
         select { padding: 12px; border-radius: 6px; margin-right: 10px; font-size: 1em; }
-        #error-message {
-            display: none;
-            color: #e41b1b;
-            font-size: 1em;
-            padding: 10px;
-            text-align: center;
-            background: #ffe6e6;
-            border-bottom: 1px solid #e41b1b;
-        }
     </style>
 </head>
 <body>
@@ -217,7 +217,7 @@
                 <option value="hi">Hindi</option>
             </select>
             <input type="file" id="image-input" accept="image/*" onchange="sendImage(event)">
-            <button id="send-button" onclick="sendMessage(event)">Send to Ulis!</button>
+            <button id="send-button" onclick="sendMessage(event)">Send</button>
             <button id="image-button" onclick="document.getElementById('image-input').click()">Image</button>
         </div>
         <div id="color-picker-modal">
@@ -240,6 +240,7 @@
         socket.on('connect', () => console.log('Socket.IO connected successfully'));
         socket.on('connect_error', (err) => {
             console.error('Socket.IO connection error:', err.message);
+            showError('Connection to server failed. Attempting to reconnect...');
             setTimeout(() => socket.connect(), 1000);
         });
         socket.on('disconnect', () => console.warn('Socket.IO disconnected'));
@@ -249,36 +250,44 @@
             const errorDiv = document.getElementById('error-message');
             errorDiv.textContent = message;
             errorDiv.style.display = 'block';
+            setTimeout(() => errorDiv.style.display = 'none', 5000); // Hide after 5 seconds
         }
 
         // Initialize user data
-        fetch('/user', { method: 'GET', credentials: 'include' })
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-                return res.json();
-            })
-            .then(data => {
-                if (data.error) {
-                    console.error('User fetch error:', data.error);
-                    showError('Failed to load user data. Please log in again.');
-                    return;
-                }
-                username = data.username;
-                userColor = data.color || '#000000';
-                userLanguage = data.language || 'en';
-                document.getElementById('current-username').textContent = `Welcome, ${username}`;
-                document.getElementById('language-select').value = userLanguage;
-                updateColorStyle(); // Apply initial color
-                console.log('User initialized:', { username, userColor, userLanguage });
+        function initializeUser() {
+            fetch('/user', { method: 'GET', credentials: 'include' })
+                .then(res => {
+                    if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                    return res.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        console.error('User fetch error:', data.error);
+                        showError('Failed to load user data. Redirecting to login...');
+                        setTimeout(() => window.location.href = '/', 2000); // Redirect after 2 seconds
+                        return;
+                    }
+                    username = data.username;
+                    userColor = data.color || '#000000';
+                    userLanguage = data.language || 'en';
+                    document.getElementById('current-username').textContent = `Welcome, ${username}`;
+                    document.getElementById('language-select').value = userLanguage;
+                    updateColorStyle(); // Apply initial color
+                    console.log('User initialized:', { username, userColor, userLanguage });
 
-                // Emit join message
-                socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now().toString() });
-                loadHistory();
-            })
-            .catch(err => {
-                console.error('Fetch /user error:', err);
-                showError('Failed to load user data. Please try logging in again or refresh the page.');
-            });
+                    // Emit join message
+                    socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now().toString() });
+                    loadHistory();
+                })
+                .catch(err => {
+                    console.error('Fetch /user error:', err);
+                    showError('Failed to load user data. Redirecting to login...');
+                    setTimeout(() => window.location.href = '/', 2000); // Redirect after 2 seconds
+                });
+        }
+
+        // Run initialization
+        initializeUser();
 
         // Socket event handlers
         socket.on('user count', count => {
