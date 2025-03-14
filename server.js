@@ -216,6 +216,8 @@ let userCount = 0;
 let connectedUsers = {};
 const MAX_USERS = 20;
 
+// [Previous code remains the same until io.on('connection')...]
+
 io.on('connection', (socket) => {
     const session = socket.handshake.session;
     console.log('Socket connection attempt - Session:', session);
@@ -274,6 +276,7 @@ io.on('connection', (socket) => {
             await saveChatMessage(msg, socket, msg.recipientId);
         } else {
             console.error('Recipient not found for DM:', msg.recipientId);
+            socket.emit('chat message', { username: 'System', text: 'Recipient is offline.', id: Date.now() });
         }
     });
 
@@ -332,6 +335,8 @@ io.on('connection', (socket) => {
         console.error('Socket error:', error.message);
     });
 });
+
+// [Remaining code (loadChatHistory, saveChatMessage, http.listen, process.on) remains the same]
 
 // Chat History Functions
 async function loadChatHistory(socket) {
