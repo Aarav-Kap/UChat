@@ -11,7 +11,7 @@ const memoryStore = require('express-session').MemoryStore;
 
 // MongoDB Connection
 const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat';
-console.log(`MongoDB URI: ${mongoURI}`); // Debug the URI being used
+console.log(`MongoDB URI: ${mongoURI}`);
 mongoose.connect(mongoURI, { serverSelectionTimeoutMS: 5000 })
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => {
@@ -29,7 +29,6 @@ try {
     mongoStore.on('error', err => {
         console.error('Session store error:', err.message);
     });
-    // Test the connection to MongoDB before using the store
     mongoStore.on('connected', () => {
         console.log('MongoDB session store connected successfully');
         sessionStore = mongoStore;
@@ -70,7 +69,7 @@ const initializeSessionStore = new Promise(resolve => {
 
 initializeSessionStore.then(store => {
     app.use(session({
-        secret: process.env.SESSION_SECRET || 'your-secret-key',
+        secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2',
         resave: false,
         saveUninitialized: false,
         store: store,
@@ -80,6 +79,7 @@ initializeSessionStore.then(store => {
     // Middleware
     app.use(express.static(path.join(__dirname)));
     app.use(express.json());
+    app.use(express.urlencoded({ extended: true })); // Handle form submissions
     app.use(cookieParser());
 
     app.get('/', (req, res) => {
@@ -99,10 +99,9 @@ initializeSessionStore.then(store => {
         }
         req.session.user = { username, color: '#1E90FF', language: 'en' };
         console.log(`POST /login - Success for username: ${username}`);
-        res.json({ success: true });
+        res.redirect('/');
     });
 
-    // Store the original /user handler
     const userHandler = (req, res) => {
         console.log('GET /user - Fetching user data', req.session);
         try {
@@ -241,24 +240,23 @@ initializeSessionStore.then(store => {
             console.log(`Name change: ${data.oldUsername} to ${data.newUsername}`);
             connectedUsers.set(socket.id, { ...connectedUsers.get(socket.id), username: data.newUsername });
             io.emit('name change', data);
-            io.emit('user list', Array.from(connectedUsers.values()));
+            io.emit('user list', Array.from(connectedUsers.values()).filter(u => u.username)); // Filter invalid users
         });
 
         socket.on('color change', data => {
             console.log(`Color change for ${data.id}: ${data.color}`);
             connectedUsers.set(socket.id, { ...connectedUsers.get(socket.id), color: data.color });
             io.emit('color change', data);
-            io.emit('user list', Array.from(connectedUsers.values()));
+            io.emit('user list', Array.from(connectedUsers.values()).filter(u => u.username));
         });
 
         socket.on('disconnect', () => {
             console.log(`Socket disconnected: ${socket.id}`);
             connectedUsers.delete(socket.id);
             io.emit('user count', connectedUsers.size);
-            io.emit('user list', Array.from(connectedUsers.values()));
+            io.emit('user list', Array.from(connectedUsers.values()).filter(u => u.username));
         });
 
-        // Fetch user data using the app's route handler
         const req = {
             session: socket.request.session,
             method: 'GET',
@@ -271,7 +269,7 @@ initializeSessionStore.then(store => {
                     const user = { id: socket.id, username: data.username, color: data.color || '#1E90FF' };
                     connectedUsers.set(socket.id, user);
                     io.emit('user count', connectedUsers.size);
-                    io.emit('user list', Array.from(connectedUsers.values()));
+                    io.emit('user list', Array.from(connectedUsers.values()).filter(u => u.username));
                 } else {
                     console.warn(`No username found for socket ${socket.id}`);
                 }

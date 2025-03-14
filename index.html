@@ -421,17 +421,14 @@
 
         socket.on('user list', users => {
             console.log('User list updated:', users);
-            // Reset connectedUsers to avoid stale data
             Object.keys(connectedUsers).forEach(id => delete connectedUsers[id]);
-            users.forEach(user => {
-                if (user.id && user.username) {
-                    connectedUsers[user.id] = user;
-                }
+            users.filter(u => u.username).forEach(user => {
+                connectedUsers[user.id] = user;
             });
             const ul = document.getElementById('user-list');
             ul.innerHTML = Object.values(connectedUsers)
-                .filter(u => u.username !== username)
-                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')"><span>${u.username || 'Unknown'}</span><button onclick="initiateCall('${u.id}', '${u.username || 'Unknown'}')">Call</button></li>`)
+                .filter(u => u.username !== username && u.username)
+                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')"><span>${u.username}</span><button onclick="initiateCall('${u.id}', '${u.username}')">Call</button></li>`)
                 .join('');
         });
 
@@ -458,7 +455,11 @@
 
         socket.on('call offer', ({ callerId, offer }) => {
             console.log('Received call offer from:', callerId);
-            document.getElementById('call-title').textContent = `Incoming Call from ${connectedUsers[callerId]?.username || 'Unknown'}`;
+            if (!connectedUsers[callerId]) {
+                showError('Unknown caller');
+                return;
+            }
+            document.getElementById('call-title').textContent = `Incoming Call from ${connectedUsers[callerId].username}`;
             document.getElementById('call-message').textContent = 'Do you want to accept?';
             document.getElementById('call-modal').style.display = 'block';
             document.querySelector('#call-modal .accept').onclick = () => acceptCall(callerId, offer);
@@ -861,12 +862,16 @@
                     peer.on('stream', remoteStream => {
                         const audio = document.getElementById('remote-audio');
                         audio.srcObject = remoteStream;
-                        audio.play();
+                        audio.play().catch(err => console.error('Audio play error:', err));
                         document.getElementById('call-interface').style.display = 'block';
                     });
                     peer.on('error', err => {
                         console.error('Peer error:', err);
                         showError('Call failed: ' + err.message);
+                        endCall();
+                    });
+                    peer.on('close', () => {
+                        console.log('Peer connection closed');
                         endCall();
                     });
                 })
@@ -881,7 +886,7 @@
                 showError('Caller is offline or unavailable');
                 return;
             }
-            document.getElementById('call-title').textContent = `Call with ${connectedUsers[callerId]?.username || 'Unknown'}`;
+            document.getElementById('call-title').textContent = `Call with ${connectedUsers[callerId].username}`;
             document.getElementById('call-message').textContent = '';
             document.querySelector('#call-modal .end').style.display = 'inline';
             document.querySelector('#call-modal .accept').style.display = 'none';
@@ -900,12 +905,16 @@
                     peer.on('stream', remoteStream => {
                         const audio = document.getElementById('remote-audio');
                         audio.srcObject = remoteStream;
-                        audio.play();
+                        audio.play().catch(err => console.error('Audio play error:', err));
                         document.getElementById('call-interface').style.display = 'block';
                     });
                     peer.on('error', err => {
                         console.error('Peer error:', err);
                         showError('Call failed: ' + err.message);
+                        endCall();
+                    });
+                    peer.on('close', () => {
+                        console.log('Peer connection closed');
                         endCall();
                     });
                     peer.signal(offer);
