@@ -110,7 +110,21 @@
             align-self: flex-start;
         }
         #chat .message.dm {
-            background-color: #e0e0e0; /* Match received message background */
+            padding: 8px; /* Match main chat padding */
+            border-radius: 5px; /* Match main chat border-radius */
+            max-width: 70%; /* Match main chat max-width */
+            margin-bottom: 5px; /* Match main chat margin-bottom */
+            display: flex; /* Match main chat display */
+            flex-direction: column; /* Match main chat flex-direction */
+        }
+        #chat .message.dm.sent {
+            background-color: #007BFF; /* Match sent messages */
+            color: white;
+            margin-left: auto;
+            align-self: flex-end;
+        }
+        #chat .message.dm.received {
+            background-color: #e0e0e0; /* Match received messages */
             color: #333;
             margin-right: auto;
             align-self: flex-start;
@@ -352,13 +366,13 @@
                 createDMTab(recipientId, msg.username === username ? getRecipientUsername(recipientId) : msg.username);
                 tab = dmTabs[recipientId];
             }
-            await displayMessage(msg, tab.chat);
+            await displayMessage(msg, tab.chat, true); // Pass isDM flag
             saveMessage(msg, recipientId); // Save DM to history
         });
 
-        async function displayMessage(msg, chatElement) {
+        async function displayMessage(msg, chatElement, isDM = false) {
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'} ${msg.isDM ? 'dm' : ''}`;
+            messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'} ${isDM ? 'dm' : ''}`;
             messageDiv.dataset.messageId = msg.messageId;
 
             let displayText = msg.text;
@@ -531,7 +545,7 @@
                 createDMTab(recipientId, recipientUsername);
             }
             switchTab(tabId);
-            loadDMHistory(recipientId); // Load DM history for this recipient
+            loadDMHistory(recipientId);
         }
 
         function createDMTab(recipientId, recipientUsername) {
@@ -708,7 +722,7 @@
         function loadDMHistory(recipientId) {
             const history = JSON.parse(localStorage.getItem(`chatHistory_${username}_${recipientId}`) || '[]');
             const chat = dmTabs[recipientId].chat;
-            history.forEach(msg => displayMessage(msg, chat));
+            history.forEach(msg => displayMessage(msg, chat, true));
         }
     </script>
 </body>
