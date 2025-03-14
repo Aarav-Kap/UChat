@@ -91,40 +91,22 @@
         }
         #chat .message {
             padding: 8px;
-            border-radius: 5px;
+            border-radius: 10px; /* Slightly rounded for better look */
             max-width: 70%;
             margin-bottom: 5px;
             display: flex;
             flex-direction: column;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+            transition: background-color 0.3s; /* Smooth color transition */
         }
         #chat .message.sent {
-            background-color: #007BFF;
+            background: linear-gradient(135deg, #007BFF, #0056b3); /* Gradient for sent messages */
             color: white;
             margin-left: auto;
             align-self: flex-end;
         }
         #chat .message.received {
-            background-color: #e0e0e0;
-            color: #333;
-            margin-right: auto;
-            align-self: flex-start;
-        }
-        #chat .message.dm {
-            padding: 8px;
-            border-radius: 5px;
-            max-width: 70%;
-            margin-bottom: 5px;
-            display: flex;
-            flex-direction: column;
-        }
-        #chat .message.dm.sent {
-            background-color: #007BFF;
-            color: white;
-            margin-left: auto;
-            align-self: flex-end;
-        }
-        #chat .message.dm.received {
-            background-color: #e0e0e0;
+            background: linear-gradient(135deg, #e0e0e0, #d3d3d3); /* Gradient for received messages */
             color: #333;
             margin-right: auto;
             align-self: flex-start;
@@ -354,13 +336,11 @@
         });
 
         socket.on('chat message', async (msg) => {
-            console.log('Received main chat message:', msg);
-            await displayMessage(msg, document.getElementById('chat'));
-            saveMessage(msg);
+            await displayMessage(msg, document.getElementById('chat'), false);
+            saveMessage(msg); // Save message to history
         });
 
         socket.on('dm message', async (msg) => {
-            console.log('Received DM message:', msg);
             const recipientId = msg.recipientId === socket.id ? (msg.senderId || socket.id) : msg.recipientId;
             const tabId = `dm-${recipientId}`;
             let tab = dmTabs[recipientId];
@@ -368,14 +348,13 @@
                 createDMTab(recipientId, msg.username === username ? getRecipientUsername(recipientId) : msg.username);
                 tab = dmTabs[recipientId];
             }
-            await displayMessage(msg, tab.chat, true);
-            saveMessage(msg, recipientId);
+            await displayMessage(msg, tab.chat, true); // Ensure DM flag is passed
+            saveMessage(msg, recipientId); // Save DM to history
         });
 
         async function displayMessage(msg, chatElement, isDM = false) {
-            console.log('Displaying message:', msg, 'in', isDM ? 'DM' : 'Main Chat');
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'} ${isDM ? 'dm' : ''}`;
+            messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'}`;
             messageDiv.dataset.messageId = msg.messageId;
 
             let displayText = msg.text;
@@ -398,6 +377,14 @@
 
             const content = msg.image ? `<img src="${msg.image}" alt="Image">` : displayText;
             let messageContent = `<span class="username" style="color: ${msg.color || '#000000'}">${msg.username}:</span> ${content}`;
+
+            // Use user-selected color for background
+            const bubbleColor = msg.color || userColor; // Fallback to user's color if sender's color is unavailable
+            if (msg.username === username) {
+                messageDiv.style.background = `linear-gradient(135deg, ${bubbleColor}, ${shadeColor(bubbleColor, -20)})`;
+            } else {
+                messageDiv.style.background = `linear-gradient(135deg, ${shadeColor(bubbleColor, 20)}, ${bubbleColor})`;
+            }
 
             if (msg.replyTo) {
                 const replyContext = document.createElement('div');
@@ -429,6 +416,17 @@
 
             chatElement.appendChild(messageDiv);
             chatElement.scrollTop = chatElement.scrollHeight;
+        }
+
+        // Function to shade a color (lighten or darken)
+        function shadeColor(color, percent) {
+            let R = parseInt(color.substring(1,3),16);
+            let G = parseInt(color.substring(3,5),16);
+            let B = parseInt(color.substring(5,7),16);
+            R = Math.max(0, Math.min(255, R + (R * percent / 100)));
+            G = Math.max(0, Math.min(255, G + (G * percent / 100)));
+            B = Math.max(0, Math.min(255, B + (B * percent / 100)));
+            return `#${(0x1000000 + (R<<16) + (G<<8) + B).toString(16).slice(1).toUpperCase()}`;
         }
 
         socket.on('typing', (username) => {
@@ -489,7 +487,7 @@
                 const msg = {
                     username,
                     text,
-                    color: userColor,
+                    color: userColor, // Send user's selected color
                     language: userLanguage,
                     messageId
                 };
@@ -499,11 +497,9 @@
                     input.placeholder = recipientId ? `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...` : 'Type a message...';
                 }
                 if (recipientId) {
-                    console.log('Sending DM to:', recipientId, 'Message:', msg);
                     msg.recipientId = recipientId;
                     socket.emit('dm message', msg);
                 } else {
-                    console.log('Sending main chat message:', msg);
                     socket.emit('chat message', msg);
                 }
                 input.value = '';
@@ -523,7 +519,7 @@
                     const msg = {
                         username,
                         image,
-                        color: userColor,
+                        color: userColor, // Send user's selected color
                         language: userLanguage,
                         messageId
                     };
@@ -533,11 +529,9 @@
                         input.placeholder = recipientId ? `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...` : 'Type a message...';
                     }
                     if (recipientId) {
-                        console.log('Sending DM image to:', recipientId, 'Message:', msg);
                         msg.recipientId = recipientId;
                         socket.emit('dm message', msg);
                     } else {
-                        console.log('Sending main chat image:', msg);
                         socket.emit('chat message', msg);
                     }
                     input.value = '';
@@ -594,15 +588,11 @@
             } else {
                 const recipientId = tabId.replace('dm-', '');
                 const dmTab = document.getElementById(`dm-tab-${recipientId}`);
-                if (dmTab) {
-                    dmTab.classList.add('active');
-                    dmTabs[recipientId].button.classList.add('active');
-                    activeTab = tabId;
-                    document.getElementById('message-input').dataset.recipientId = recipientId;
-                    document.getElementById('message-input').placeholder = `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...`;
-                } else {
-                    console.error('DM tab not found for recipientId:', recipientId);
-                }
+                dmTab.classList.add('active');
+                dmTabs[recipientId].button.classList.add('active');
+                activeTab = tabId;
+                document.getElementById('message-input').dataset.recipientId = recipientId;
+                document.getElementById('message-input').placeholder = `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...`;
             }
             replyToMessage = null;
         }
@@ -727,7 +717,7 @@
         function loadHistory() {
             const history = JSON.parse(localStorage.getItem(`chatHistory_${username}_main`) || '[]');
             const chat = document.getElementById('chat');
-            history.forEach(msg => displayMessage(msg, chat));
+            history.forEach(msg => displayMessage(msg, chat, false));
         }
 
         function loadDMHistory(recipientId) {
