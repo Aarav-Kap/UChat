@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UlisChat</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -91,22 +94,22 @@
         }
         #chat .message {
             padding: 8px;
-            border-radius: 10px; /* Slightly rounded for better look */
+            border-radius: 10px;
             max-width: 70%;
             margin-bottom: 5px;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
-            transition: background-color 0.3s; /* Smooth color transition */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.3s;
         }
         #chat .message.sent {
-            background: linear-gradient(135deg, #007BFF, #0056b3); /* Gradient for sent messages */
+            background: linear-gradient(135deg, #007BFF, #0056b3);
             color: white;
             margin-left: auto;
             align-self: flex-end;
         }
         #chat .message.received {
-            background: linear-gradient(135deg, #e0e0e0, #d3d3d3); /* Gradient for received messages */
+            background: linear-gradient(135deg, #e0e0e0, #d3d3d3);
             color: #333;
             margin-right: auto;
             align-self: flex-start;
@@ -336,11 +339,13 @@
         });
 
         socket.on('chat message', async (msg) => {
+            console.log('Received chat message:', msg); // Debug log
             await displayMessage(msg, document.getElementById('chat'), false);
             saveMessage(msg); // Save message to history
         });
 
         socket.on('dm message', async (msg) => {
+            console.log('Received DM message:', msg); // Debug log
             const recipientId = msg.recipientId === socket.id ? (msg.senderId || socket.id) : msg.recipientId;
             const tabId = `dm-${recipientId}`;
             let tab = dmTabs[recipientId];
@@ -353,6 +358,7 @@
         });
 
         async function displayMessage(msg, chatElement, isDM = false) {
+            console.log('Displaying message:', msg); // Debug log
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'}`;
             messageDiv.dataset.messageId = msg.messageId;
@@ -376,15 +382,12 @@
             }
 
             const content = msg.image ? `<img src="${msg.image}" alt="Image">` : displayText;
-            let messageContent = `<span class="username" style="color: ${msg.color || '#000000'}">${msg.username}:</span> ${content}`;
+            let messageContent = `<span class="username" style="color: ${getContrastColor(msg.color || userColor)}">${msg.username}:</span> <span style="color: ${getContrastColor(msg.color || userColor)}">${content}</span>`;
 
-            // Use user-selected color for background
-            const bubbleColor = msg.color || userColor; // Fallback to user's color if sender's color is unavailable
-            if (msg.username === username) {
-                messageDiv.style.background = `linear-gradient(135deg, ${bubbleColor}, ${shadeColor(bubbleColor, -20)})`;
-            } else {
-                messageDiv.style.background = `linear-gradient(135deg, ${shadeColor(bubbleColor, 20)}, ${bubbleColor})`;
-            }
+            // Use user-selected color for background with contrast-aware text
+            const bubbleColor = msg.color || userColor;
+            messageDiv.style.background = `linear-gradient(135deg, ${bubbleColor}, ${shadeColor(bubbleColor, -20)})`;
+            messageDiv.style.color = getContrastColor(bubbleColor); // Ensure readable text
 
             if (msg.replyTo) {
                 const replyContext = document.createElement('div');
@@ -405,12 +408,14 @@
                 const originalDiv = document.createElement('div');
                 originalDiv.className = 'original-message';
                 originalDiv.textContent = `(${msg.language}: ${originalText})`;
+                originalDiv.style.color = getContrastColor(bubbleColor); // Match text color
                 messageDiv.appendChild(originalDiv);
             }
 
             const replyButton = document.createElement('span');
             replyButton.className = 'reply-button';
             replyButton.textContent = 'Reply';
+            replyButton.style.color = '#007BFF'; // Keep reply button blue for visibility
             replyButton.onclick = () => setReplyTo(msg);
             messageDiv.appendChild(replyButton);
 
@@ -427,6 +432,15 @@
             G = Math.max(0, Math.min(255, G + (G * percent / 100)));
             B = Math.max(0, Math.min(255, B + (B * percent / 100)));
             return `#${(0x1000000 + (R<<16) + (G<<8) + B).toString(16).slice(1).toUpperCase()}`;
+        }
+
+        // Function to get contrasting text color (black or white) based on background luminance
+        function getContrastColor(hexcolor) {
+            const r = parseInt(hexcolor.substr(1,2), 16);
+            const g = parseInt(hexcolor.substr(3,2), 16);
+            const b = parseInt(hexcolor.substr(5,2), 16);
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.5 ? '#000000' : '#FFFFFF'; // Black on light, white on dark
         }
 
         socket.on('typing', (username) => {
@@ -487,7 +501,7 @@
                 const msg = {
                     username,
                     text,
-                    color: userColor, // Send user's selected color
+                    color: userColor,
                     language: userLanguage,
                     messageId
                 };
@@ -519,7 +533,7 @@
                     const msg = {
                         username,
                         image,
-                        color: userColor, // Send user's selected color
+                        color: userColor,
                         language: userLanguage,
                         messageId
                     };
