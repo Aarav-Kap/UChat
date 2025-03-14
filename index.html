@@ -107,7 +107,7 @@
             position: relative;
         }
         .message.sent {
-            background: linear-gradient(135deg, var(--user-color, #4ecdc4), var(--user-color-light, #45b7aa));
+            background: linear-gradient(135deg, var(--user-color, #1E90FF), var(--user-color-light, #45b7aa));
             color: #fff;
             margin-left: auto;
             align-self: flex-end;
@@ -120,10 +120,16 @@
         }
         .message img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
         .message .meta { font-size: 0.75em; color: #7f8c8d; margin-top: 5px; }
+        .message .username {
+            font-weight: bold;
+            color: var(--user-color, #1E90FF); /* Use the sender's color */
+            margin-bottom: 5px;
+            display: block;
+        }
         .reply-context {
             background: #f8f9fa;
             padding: 10px;
-            border-left: 4px solid var(--user-color, #4ecdc4);
+            border-left: 4px solid var(--user-color, #1E90FF);
             margin-bottom: 8px;
             border-radius: 8px;
             font-size: 0.85em;
@@ -147,10 +153,10 @@
             outline: none;
             transition: border-color 0.2s;
         }
-        #message-input:focus { border-color: var(--user-color, #4ecdc4); }
+        #message-input:focus { border-color: var(--user-color, #1E90FF); }
         #send-button, #image-button {
             padding: 12px 18px;
-            background: var(--user-color, #4ecdc4);
+            background: var(--user-color, #1E90FF);
             color: white;
             border: none;
             border-radius: 6px;
@@ -223,7 +229,7 @@
         <div id="color-picker-modal">
             <div id="color-picker-content">
                 <h3>Choose Your Color</h3>
-                <input type="color" id="color-picker" value="#000000">
+                <input type="color" id="color-picker" value="#1E90FF"> <!-- Default to blue -->
                 <br><br>
                 <button onclick="changeColor(event)">Save</button>
                 <button onclick="hideColorPicker(event)">Cancel</button>
@@ -234,7 +240,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io({ reconnection: true, reconnectionAttempts: 5, reconnectionDelay: 1000 });
-        let username = '', userColor = '#000000', userLanguage = 'en', activeTab = 'main', dmTabs = {}, replyTo = null;
+        let username = '', userColor = '#1E90FF', userLanguage = 'en', activeTab = 'main', dmTabs = {}, replyTo = null;
 
         // Debug Socket.IO connection
         socket.on('connect', () => console.log('Socket.IO connected successfully'));
@@ -268,7 +274,7 @@
                         return;
                     }
                     username = data.username;
-                    userColor = data.color || '#000000';
+                    userColor = data.color || '#1E90FF'; // Changed default color to blue
                     userLanguage = data.language || 'en';
                     document.getElementById('current-username').textContent = `Welcome, ${username}`;
                     document.getElementById('language-select').value = userLanguage;
@@ -299,7 +305,7 @@
             const ul = document.getElementById('user-list');
             ul.innerHTML = users
                 .filter(u => u.username !== username)
-                .map(u => `<li style="color: ${u.color || '#e0e0e0'}" onclick="startDM('${u.id}', '${u.username}')">${u.username}</li>`)
+                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')">${u.username}</li>`)
                 .join('');
         });
         socket.on('chat message', msg => {
@@ -334,8 +340,14 @@
             div.className = `message ${msg.username === username ? 'sent' : 'received'}`;
             div.dataset.id = msg.messageId || msg.id;
             div.dataset.senderId = msg.senderId || '';
-            div.style.setProperty('--user-color', msg.username === username ? userColor : (connectedUsers[msg.senderId]?.color || '#e0e0e0'));
-            div.style.setProperty('--user-color-light', lightenColor(msg.username === username ? userColor : (connectedUsers[msg.senderId]?.color || '#e0e0e0'), 10));
+            div.style.setProperty('--user-color', msg.username === username ? userColor : (connectedUsers[msg.senderId]?.color || '#1E90FF'));
+            div.style.setProperty('--user-color-light', lightenColor(msg.username === username ? userColor : (connectedUsers[msg.senderId]?.color || '#1E90FF'), 10));
+
+            // Add username above the message
+            const usernameSpan = document.createElement('span');
+            usernameSpan.className = 'username';
+            usernameSpan.textContent = msg.username;
+            div.appendChild(usernameSpan);
 
             let text = msg.text || '';
             if (msg.language !== userLanguage && text && !msg.image) {
@@ -379,7 +391,8 @@
 
         function updateMessageContent(div, text, image) {
             const content = image ? `<img src="${image}" alt="Image">` : text;
-            div.innerHTML = `<span class="meta">${div.querySelector('.meta')?.textContent || ''}</span>${content}${div.querySelector('.reply-context') ? div.querySelector('.reply-context').outerHTML : ''}${div.querySelector('.replyBtn') ? div.querySelector('.replyBtn').outerHTML : ''}`;
+            // Ensure username remains above content
+            div.innerHTML = `${div.querySelector('.username')?.outerHTML || ''}<span class="meta">${div.querySelector('.meta')?.textContent || ''}</span>${content}${div.querySelector('.reply-context') ? div.querySelector('.reply-context').outerHTML : ''}${div.querySelector('.replyBtn') ? div.querySelector('.replyBtn').outerHTML : ''}`;
         }
 
         // Utility functions
@@ -413,6 +426,7 @@
                 if (msg.dataset.senderId === data.id) {
                     msg.style.setProperty('--user-color', data.color);
                     msg.style.setProperty('--user-color-light', lightenColor(data.color, 10));
+                    msg.querySelector('.username').style.color = data.color; // Update username color
                 }
             });
         }

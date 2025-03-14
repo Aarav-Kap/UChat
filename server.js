@@ -111,7 +111,7 @@ app.post('/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new User({ username, password: hashedPassword });
         await user.save();
-        req.session.user = { username, color: '#000000', language: 'en' };
+        req.session.user = { username, color: '#1E90FF', language: 'en' }; // Changed default color to blue
         await req.session.save();
         console.log('User registered and session saved:', username);
         res.redirect('/');
@@ -135,7 +135,7 @@ app.post('/login', async (req, res) => {
             return res.status(401).send('Invalid username or password');
         }
 
-        req.session.user = { username, color: req.session.user?.color || '#000000', language: req.session.user?.language || 'en' };
+        req.session.user = { username, color: req.session.user?.color || '#1E90FF', language: req.session.user?.language || 'en' }; // Changed default color to blue
         await req.session.save();
         console.log('User logged in and session saved:', username);
         res.redirect('/');
@@ -248,7 +248,7 @@ io.on('connection', (socket) => {
     }
 
     const username = session.user.username;
-    const userColor = session.user.color || '#000000';
+    const userColor = session.user.color || '#1E90FF'; // Changed default color to blue
     const userLanguage = session.user.language || 'en';
     userCount++;
     connectedUsers[socket.id] = { username, id: socket.id, color: userColor, language: userLanguage };
