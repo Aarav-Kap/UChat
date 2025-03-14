@@ -214,14 +214,14 @@ io.on('connection', (socket) => {
 
     socket.on('chat message', (msg) => {
         if (!msg || !msg.username || !msg.text && !msg.image) {
-            console.error('Invalid message received:', msg);
+            console.error('Invalid main chat message received:', msg);
             return;
         }
         msg.language = connectedUsers[socket.id].language;
         msg.isDM = false;
-        console.log('Broadcasting chat message from:', msg.username);
+        console.log('Broadcasting main chat message from:', msg.username, 'Message:', msg);
         io.emit('chat message', msg);
-        saveChatMessage(msg); // Save to history
+        saveChatMessage(msg);
     });
 
     socket.on('dm message', (msg) => {
@@ -232,10 +232,15 @@ io.on('connection', (socket) => {
         msg.language = connectedUsers[socket.id].language;
         msg.isDM = true;
         msg.senderId = socket.id;
-        console.log('Sending DM from:', msg.username, 'to:', msg.recipientId);
-        io.to(msg.recipientId).emit('dm message', msg);
-        socket.emit('dm message', msg);
-        saveChatMessage(msg, msg.recipientId); // Save to history
+        const recipientSocket = Object.keys(connectedUsers).find(id => id === msg.recipientId);
+        if (recipientSocket) {
+            console.log('Sending DM from:', msg.username, 'to:', msg.recipientId, 'Message:', msg);
+            io.to(msg.recipientId).emit('dm message', msg);
+            socket.emit('dm message', msg); // Echo back to sender
+            saveChatMessage(msg, msg.recipientId);
+        } else {
+            console.error('Recipient not found for DM:', msg.recipientId);
+        }
     });
 
     socket.on('typing', (username) => {
@@ -251,6 +256,7 @@ io.on('connection', (socket) => {
         if (data && data.oldUsername && data.newUsername && data.id) {
             if (connectedUsers[data.id]) {
                 connectedUsers[data.id].username = data.newUsername;
+                console.log('Name changed:', data);
                 io.emit('name change', data);
                 io.emit('user list', Object.values(connectedUsers));
             }
@@ -261,6 +267,7 @@ io.on('connection', (socket) => {
         if (data && data.id && data.color) {
             if (connectedUsers[data.id]) {
                 connectedUsers[data.id].color = data.color;
+                console.log('Color changed:', data);
                 io.emit('user list', Object.values(connectedUsers));
                 io.emit('color change', data);
             }
@@ -271,9 +278,9 @@ io.on('connection', (socket) => {
         userCount--;
         if (connectedUsers[socket.id]) {
             delete connectedUsers[socket.id];
+            console.log('User disconnected:', socket.id, 'userCount:', userCount);
             io.emit('user list', Object.values(connectedUsers));
         }
-        console.log('User disconnected, userCount:', userCount);
         io.emit('user count', userCount);
     });
 
@@ -291,7 +298,8 @@ async function loadChatHistory(socket) {
         if (history) {
             history.messages.forEach(msg => {
                 if (msg.isDM) {
-                    io.to(msg.recipientId).emit('dm message', msg);
+                    const recipientId = msg.recipientId || socket.id;
+                    io.to(recipientId).emit('dm message', msg);
                     socket.emit('dm message', msg);
                 } else {
                     io.emit('chat message', msg);

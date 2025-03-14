@@ -110,21 +110,21 @@
             align-self: flex-start;
         }
         #chat .message.dm {
-            padding: 8px; /* Match main chat padding */
-            border-radius: 5px; /* Match main chat border-radius */
-            max-width: 70%; /* Match main chat max-width */
-            margin-bottom: 5px; /* Match main chat margin-bottom */
-            display: flex; /* Match main chat display */
-            flex-direction: column; /* Match main chat flex-direction */
+            padding: 8px;
+            border-radius: 5px;
+            max-width: 70%;
+            margin-bottom: 5px;
+            display: flex;
+            flex-direction: column;
         }
         #chat .message.dm.sent {
-            background-color: #007BFF; /* Match sent messages */
+            background-color: #007BFF;
             color: white;
             margin-left: auto;
             align-self: flex-end;
         }
         #chat .message.dm.received {
-            background-color: #e0e0e0; /* Match received messages */
+            background-color: #e0e0e0;
             color: #333;
             margin-right: auto;
             align-self: flex-start;
@@ -354,11 +354,13 @@
         });
 
         socket.on('chat message', async (msg) => {
+            console.log('Received main chat message:', msg);
             await displayMessage(msg, document.getElementById('chat'));
-            saveMessage(msg); // Save message to history
+            saveMessage(msg);
         });
 
         socket.on('dm message', async (msg) => {
+            console.log('Received DM message:', msg);
             const recipientId = msg.recipientId === socket.id ? (msg.senderId || socket.id) : msg.recipientId;
             const tabId = `dm-${recipientId}`;
             let tab = dmTabs[recipientId];
@@ -366,11 +368,12 @@
                 createDMTab(recipientId, msg.username === username ? getRecipientUsername(recipientId) : msg.username);
                 tab = dmTabs[recipientId];
             }
-            await displayMessage(msg, tab.chat, true); // Pass isDM flag
-            saveMessage(msg, recipientId); // Save DM to history
+            await displayMessage(msg, tab.chat, true);
+            saveMessage(msg, recipientId);
         });
 
         async function displayMessage(msg, chatElement, isDM = false) {
+            console.log('Displaying message:', msg, 'in', isDM ? 'DM' : 'Main Chat');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'} ${isDM ? 'dm' : ''}`;
             messageDiv.dataset.messageId = msg.messageId;
@@ -496,9 +499,11 @@
                     input.placeholder = recipientId ? `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...` : 'Type a message...';
                 }
                 if (recipientId) {
+                    console.log('Sending DM to:', recipientId, 'Message:', msg);
                     msg.recipientId = recipientId;
                     socket.emit('dm message', msg);
                 } else {
+                    console.log('Sending main chat message:', msg);
                     socket.emit('chat message', msg);
                 }
                 input.value = '';
@@ -528,9 +533,11 @@
                         input.placeholder = recipientId ? `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...` : 'Type a message...';
                     }
                     if (recipientId) {
+                        console.log('Sending DM image to:', recipientId, 'Message:', msg);
                         msg.recipientId = recipientId;
                         socket.emit('dm message', msg);
                     } else {
+                        console.log('Sending main chat image:', msg);
                         socket.emit('chat message', msg);
                     }
                     input.value = '';
@@ -587,11 +594,15 @@
             } else {
                 const recipientId = tabId.replace('dm-', '');
                 const dmTab = document.getElementById(`dm-tab-${recipientId}`);
-                dmTab.classList.add('active');
-                dmTabs[recipientId].button.classList.add('active');
-                activeTab = tabId;
-                document.getElementById('message-input').dataset.recipientId = recipientId;
-                document.getElementById('message-input').placeholder = `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...`;
+                if (dmTab) {
+                    dmTab.classList.add('active');
+                    dmTabs[recipientId].button.classList.add('active');
+                    activeTab = tabId;
+                    document.getElementById('message-input').dataset.recipientId = recipientId;
+                    document.getElementById('message-input').placeholder = `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...`;
+                } else {
+                    console.error('DM tab not found for recipientId:', recipientId);
+                }
             }
             replyToMessage = null;
         }
