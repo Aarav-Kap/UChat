@@ -174,9 +174,19 @@
         }
         #color-picker { width: 60px; height: 60px; cursor: pointer; }
         select { padding: 12px; border-radius: 6px; margin-right: 10px; font-size: 1em; }
+        #error-message {
+            display: none;
+            color: #e41b1b;
+            font-size: 1em;
+            padding: 10px;
+            text-align: center;
+            background: #ffe6e6;
+            border-bottom: 1px solid #e41b1b;
+        }
     </style>
 </head>
 <body>
+    <div id="error-message"></div>
     <div id="sidebar">
         <h3>Online Users (<span id="user-count">0</span>)</h3>
         <ul id="user-list"></ul>
@@ -234,6 +244,13 @@
         });
         socket.on('disconnect', () => console.warn('Socket.IO disconnected'));
 
+        // Display error messages
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
         // Initialize user data
         fetch('/user', { method: 'GET', credentials: 'include' })
             .then(res => {
@@ -243,7 +260,7 @@
             .then(data => {
                 if (data.error) {
                     console.error('User fetch error:', data.error);
-                    window.location.href = '/';
+                    showError('Failed to load user data. Please log in again.');
                     return;
                 }
                 username = data.username;
@@ -255,13 +272,12 @@
                 console.log('User initialized:', { username, userColor, userLanguage });
 
                 // Emit join message
-                socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now() });
+                socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now().toString() });
                 loadHistory();
             })
             .catch(err => {
                 console.error('Fetch /user error:', err);
-                document.getElementById('current-username').textContent = 'Failed to load user data. Redirecting...';
-                setTimeout(() => window.location.href = '/', 2000);
+                showError('Failed to load user data. Please try logging in again or refresh the page.');
             });
 
         // Socket event handlers
@@ -308,6 +324,7 @@
             const div = document.createElement('div');
             div.className = `message ${msg.username === username ? 'sent' : 'received'}`;
             div.dataset.id = msg.messageId || msg.id;
+            div.dataset.senderId = msg.senderId || '';
             div.style.setProperty('--user-color', msg.username === username ? userColor : (connectedUsers[msg.senderId]?.color || '#e0e0e0'));
             div.style.setProperty('--user-color-light', lightenColor(msg.username === username ? userColor : (connectedUsers[msg.senderId]?.color || '#e0e0e0'), 10));
 
@@ -442,7 +459,7 @@
             const text = input.value.trim();
             if (!text) return;
             const recipientId = input.dataset.recipient;
-            const msg = { username, text, color: userColor, language: userLanguage, id: Date.now() + Math.random().toString(36).substr(2, 9), senderId: socket.id };
+            const msg = { username, text, color: userColor, language: userLanguage, id: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
             if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
             if (recipientId) {
                 msg.recipientId = recipientId;
@@ -461,7 +478,7 @@
             if (!file) return;
             const reader = new FileReader();
             reader.onload = e => {
-                const msg = { username, image: e.target.result, color: userColor, language: userLanguage, id: Date.now() + Math.random().toString(36).substr(2, 9), senderId: socket.id };
+                const msg = { username, image: e.target.result, color: userColor, language: userLanguage, id: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
                 const recipientId = document.getElementById('message-input').dataset.recipient;
                 if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
                 if (recipientId) {
@@ -496,12 +513,12 @@
                             socket.emit('name change', { oldUsername: username, newUsername: newName.trim(), id: socket.id });
                             console.log('Username changed:', newName);
                         } else {
-                            alert(data.message || 'Failed to change username');
+                            showError(data.message || 'Failed to change username');
                         }
                     })
                     .catch(err => {
                         console.error('Change username error:', err);
-                        alert('Error changing username');
+                        showError('Error changing username');
                     });
             }
         }
@@ -526,12 +543,12 @@
                         updateColorStyle(); // Update UI color
                         console.log('Color changed:', newColor);
                     } else {
-                        alert(data.message || 'Failed to change color');
+                        showError(data.message || 'Failed to change color');
                     }
                 })
                 .catch(err => {
                     console.error('Change color error:', err);
-                    alert('Error changing color');
+                    showError('Error changing color');
                 });
         }
         function updateLanguage(e) {
@@ -540,11 +557,11 @@
             fetch('/update-language', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: userLanguage }) })
                 .then(res => res.json())
                 .then(data => {
-                    if (!data.success) alert(data.message || 'Failed to update language');
+                    if (!data.success) showError(data.message || 'Failed to update language');
                 })
                 .catch(err => {
                     console.error('Update language error:', err);
-                    alert('Error updating language');
+                    showError('Error updating language');
                 });
         }
         function logout(e) {
@@ -553,7 +570,7 @@
                 .then(() => window.location.href = '/')
                 .catch(err => {
                     console.error('Logout error:', err);
-                    alert('Error logging out');
+                    showError('Error logging out');
                 });
         }
         function setReply(msg) {
