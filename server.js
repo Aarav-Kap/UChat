@@ -36,7 +36,7 @@ app.use(sessionMiddleware);
         console.log('Connected to MongoDB');
     } catch (err) {
         console.error('MongoDB connection error:', err);
-        process.exit(1); // Exit the process if MongoDB connection fails
+        process.exit(1);
     }
 })();
 
@@ -50,6 +50,27 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true }
 });
 const User = mongoose.model('User', userSchema);
+
+// Define ChatHistory schema
+const chatHistorySchema = new mongoose.Schema({
+    username: String,
+    recipientId: { type: String, default: null },
+    messages: [{
+        username: String,
+        text: String,
+        color: String,
+        language: String,
+        messageId: String,
+        replyTo: {
+            username: String,
+            text: String
+        },
+        isDM: Boolean,
+        image: String,
+        timestamp: { type: Date, default: Date.now }
+    }]
+});
+const ChatHistory = mongoose.model('ChatHistory', chatHistorySchema);
 
 io.use(sharedsession(sessionMiddleware, {
     autoSave: true
@@ -74,8 +95,7 @@ app.post('/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new User({ username, password: hashedPassword });
         await user.save();
-        console.log('Registered user:', username);
-        req.session.user = { username, color: '#000000', language: 'en' }; // Default language
+        req.session.user = { username, color: '#000000', language: 'en' };
         res.redirect('/');
     } catch (err) {
         console.error('Register error:', err);
@@ -165,7 +185,7 @@ app.post('/update-language', (req, res) => {
 
 let userCount = 0;
 let connectedUsers = {};
-const MAX_USERS = 20; // Limit concurrent users to reduce server load
+const MAX_USERS = 20;
 
 io.on('connection', (socket) => {
     const session = socket.handshake.session;
@@ -189,14 +209,19 @@ io.on('connection', (socket) => {
     io.emit('user count', userCount);
     io.emit('user list', Object.values(connectedUsers));
 
+    // Load chat history on connection
+    loadChatHistory(socket);
+
     socket.on('chat message', (msg) => {
         if (!msg || !msg.username || !msg.text && !msg.image) {
             console.error('Invalid message received:', msg);
             return;
         }
-        msg.language = connectedUsers[socket.id].language; // Add sender's language
+        msg.language = connectedUsers[socket.id].language;
+        msg.isDM = false;
         console.log('Broadcasting chat message from:', msg.username);
         io.emit('chat message', msg);
+        saveChatMessage(msg); // Save to history
     });
 
     socket.on('dm message', (msg) => {
@@ -204,11 +229,13 @@ io.on('connection', (socket) => {
             console.error('Invalid DM received:', msg);
             return;
         }
-        msg.language = connectedUsers[socket.id].language; // Add sender's language
-        console.log('Sending DM from:', msg.username, 'to:', msg.recipientId);
+        msg.language = connectedUsers[socket.id].language;
+        msg.isDM = true;
         msg.senderId = socket.id;
-        io.to(msg.recipientId).emit('dm message', { ...msg, isDM: true });
-        socket.emit('dm message', { ...msg, isDM: true });
+        console.log('Sending DM from:', msg.username, 'to:', msg.recipientId);
+        io.to(msg.recipientId).emit('dm message', msg);
+        socket.emit('dm message', msg);
+        saveChatMessage(msg, msg.recipientId); // Save to history
     });
 
     socket.on('typing', (username) => {
@@ -224,7 +251,6 @@ io.on('connection', (socket) => {
         if (data && data.oldUsername && data.newUsername && data.id) {
             if (connectedUsers[data.id]) {
                 connectedUsers[data.id].username = data.newUsername;
-                console.log('Broadcasting name change:', data);
                 io.emit('name change', data);
                 io.emit('user list', Object.values(connectedUsers));
             }
@@ -255,6 +281,39 @@ io.on('connection', (socket) => {
         console.error('Socket error:', error.message);
     });
 });
+
+// Chat History Functions
+async function loadChatHistory(socket) {
+    const session = socket.handshake.session;
+    if (session && session.user) {
+        const username = session.user.username;
+        const history = await ChatHistory.findOne({ username });
+        if (history) {
+            history.messages.forEach(msg => {
+                if (msg.isDM) {
+                    io.to(msg.recipientId).emit('dm message', msg);
+                    socket.emit('dm message', msg);
+                } else {
+                    io.emit('chat message', msg);
+                }
+            });
+        }
+    }
+}
+
+async function saveChatMessage(msg, recipientId = null) {
+    const session = msg.socket?.handshake?.session || io.sockets.connected[msg.senderId]?.handshake?.session;
+    if (session && session.user) {
+        const username = session.user.username;
+        let history = await ChatHistory.findOne({ username });
+        if (!history) {
+            history = new ChatHistory({ username, messages: [] });
+        }
+        msg.timestamp = new Date();
+        history.messages.push(msg);
+        await history.save();
+    }
+}
 
 http.listen(process.env.PORT || 3000, '0.0.0.0', () => {
     console.log('Server running');

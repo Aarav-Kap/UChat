@@ -32,16 +32,27 @@
             cursor: pointer;
             margin-bottom: 5px;
             border-radius: 5px;
-            background-color: #444; /* Subtle background for highlighting */
+            background-color: #444;
             transition: background-color 0.2s;
         }
         #user-list li:hover {
-            background-color: #555; /* Hover effect */
+            background-color: #555;
         }
         #chat-container {
             flex: 1;
             display: flex;
             flex-direction: column;
+        }
+        #username-container {
+            padding: 10px;
+            background-color: #333;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #username-container span {
+            margin-right: 10px;
         }
         #tabs {
             display: flex;
@@ -76,38 +87,38 @@
             display: block;
         }
         #chat div {
-            margin-bottom: 10px; /* Consistent spacing between messages */
+            margin-bottom: 10px;
         }
         #chat .message {
             padding: 8px;
             border-radius: 5px;
             max-width: 70%;
-            margin-bottom: 5px; /* Consistent spacing within message groups */
+            margin-bottom: 5px;
             display: flex;
             flex-direction: column;
         }
         #chat .message.sent {
             background-color: #007BFF;
-            color: white; /* Default text color for sent messages */
+            color: white;
             margin-left: auto;
             align-self: flex-end;
         }
         #chat .message.received {
             background-color: #e0e0e0;
-            color: #333; /* Default text color for received messages */
+            color: #333;
             margin-right: auto;
             align-self: flex-start;
         }
         #chat .message.dm {
-            background-color: #FFD700;
-            color: #333; /* Consistent text color for DMs */
+            background-color: #e0e0e0; /* Match received message background */
+            color: #333;
             margin-right: auto;
-            align-self: flex-start; /* Align DMs to the left like received messages */
+            align-self: flex-start;
         }
         #chat img {
             max-width: 200px;
             border-radius: 5px;
-            margin-bottom: 5px; /* Spacing below images */
+            margin-bottom: 5px;
         }
         #chat .username {
             font-weight: bold;
@@ -146,7 +157,7 @@
             color: #666;
             font-size: 12px;
             margin-top: 5px;
-            background-color: #f9f9f9; /* Highlighted background for original message */
+            background-color: #f9f9f9;
             padding: 2px 5px;
             border-radius: 3px;
         }
@@ -163,7 +174,7 @@
             border-radius: 5px;
             margin-right: 10px;
         }
-        #send-button, #image-button {
+        #send-button, #image-button, #change-color {
             padding: 10px;
             background-color: #4CAF50;
             color: white;
@@ -172,7 +183,7 @@
             cursor: pointer;
             margin-right: 10px;
         }
-        #send-button:hover, #image-button:hover {
+        #send-button:hover, #image-button:hover, #change-color:hover {
             background-color: #45a049;
         }
         #image-input {
@@ -183,14 +194,6 @@
             font-style: italic;
             margin: 5px 10px;
         }
-        #username-container {
-            padding: 10px;
-            background-color: #333;
-            color: white;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
         #change-username, #logout {
             cursor: pointer;
             color: #007BFF;
@@ -199,13 +202,28 @@
         #change-username:hover, #logout:hover {
             text-decoration: underline;
         }
-        #color-picker-container {
-            display: inline-block;
-            margin-left: 10px;
+        #color-picker-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        #color-picker-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
         }
         #color-picker {
-            width: 30px;
-            height: 30px;
+            width: 50px;
+            height: 50px;
             padding: 0;
             border: none;
             cursor: pointer;
@@ -236,7 +254,7 @@
             <span id="current-username">Loading...</span>
             <div>
                 <span id="change-username" onclick="changeUsername()">Change Username</span>
-                <span id="change-color" onclick="showColorPicker()">Change Color</span>
+                <button id="change-color" onclick="showColorPicker()">Change Color</button>
                 <span id="logout" onclick="logout()">Logout</span>
             </div>
         </div>
@@ -260,9 +278,8 @@
             <button id="send-button" onclick="sendMessage()">Send</button>
             <button id="image-button" onclick="document.getElementById('image-input').click()">Image</button>
         </div>
-        <!-- Color Picker Modal -->
-        <div id="color-picker-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
-            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: white; padding: 20px; border-radius: 5px;">
+        <div id="color-picker-modal">
+            <div id="color-picker-content">
                 <h3>Pick a Color</h3>
                 <input type="color" id="color-picker" value="#000000">
                 <br><br>
@@ -276,12 +293,12 @@
     <script>
         const socket = io();
         let username = '';
-        let userColor = '#000000'; // Default color
-        let userLanguage = 'en'; // Default language
+        let userColor = '#000000';
+        let userLanguage = 'en';
         let typingTimeout;
         let activeTab = 'main';
         let dmTabs = {};
-        let replyToMessage = null; // Store the message being replied to
+        let replyToMessage = null;
 
         // Fetch current username, color, and language
         fetch('/user')
@@ -296,6 +313,7 @@
                     document.getElementById('current-username').textContent = `Welcome, ${username}`;
                     document.getElementById('language-select').value = userLanguage;
                     socket.emit('chat message', { username: 'System', text: `${username} has joined the chat` });
+                    loadHistory(); // Load message history on login
                 }
             })
             .catch(err => {
@@ -322,9 +340,8 @@
         });
 
         socket.on('chat message', async (msg) => {
-            if (activeTab === 'main') {
-                await displayMessage(msg, document.getElementById('chat'));
-            }
+            await displayMessage(msg, document.getElementById('chat'));
+            saveMessage(msg); // Save message to history
         });
 
         socket.on('dm message', async (msg) => {
@@ -336,14 +353,14 @@
                 tab = dmTabs[recipientId];
             }
             await displayMessage(msg, tab.chat);
+            saveMessage(msg, recipientId); // Save DM to history
         });
 
         async function displayMessage(msg, chatElement) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${msg.username === username ? 'sent' : 'received'} ${msg.isDM ? 'dm' : ''}`;
-            messageDiv.dataset.messageId = msg.messageId; // Store message ID for replying
+            messageDiv.dataset.messageId = msg.messageId;
 
-            // Translate the message if needed
             let displayText = msg.text;
             let originalText = msg.text;
             if (msg.language !== userLanguage && msg.text && !msg.image) {
@@ -354,18 +371,17 @@
                         displayText = data.responseData.translatedText;
                     } else {
                         console.error('Translation failed:', data.responseDetails);
-                        displayText = msg.text; // Fallback to original text
+                        displayText = msg.text;
                     }
                 } catch (err) {
                     console.error('Translation error:', err);
-                    displayText = msg.text; // Fallback to original text
+                    displayText = msg.text;
                 }
             }
 
             const content = msg.image ? `<img src="${msg.image}" alt="Image">` : displayText;
             let messageContent = `<span class="username" style="color: ${msg.color || '#000000'}">${msg.username}:</span> ${content}`;
-            
-            // Add reply context if this message is a reply
+
             if (msg.replyTo) {
                 const replyContext = document.createElement('div');
                 replyContext.className = 'reply-context';
@@ -380,8 +396,7 @@
                 messageDiv.appendChild(replyContext);
             }
 
-            // Add translated message and original message (if translated)
-            messageDiv.innerHTML = messageContent;
+            messageDiv.innerHTML += messageContent;
             if (msg.language !== userLanguage && msg.text && !msg.image) {
                 const originalDiv = document.createElement('div');
                 originalDiv.className = 'original-message';
@@ -389,7 +404,6 @@
                 messageDiv.appendChild(originalDiv);
             }
 
-            // Add reply button
             const replyButton = document.createElement('span');
             replyButton.className = 'reply-button';
             replyButton.textContent = 'Reply';
@@ -454,13 +468,13 @@
             const text = input.value.trim();
             if (text) {
                 const recipientId = input.dataset.recipientId;
-                const messageId = Date.now() + Math.random().toString(36).substring(2); // Unique message ID
-                const msg = { 
-                    username, 
-                    text, 
-                    color: userColor, 
-                    language: userLanguage, 
-                    messageId 
+                const messageId = Date.now() + Math.random().toString(36).substring(2);
+                const msg = {
+                    username,
+                    text,
+                    color: userColor,
+                    language: userLanguage,
+                    messageId
                 };
                 if (replyToMessage) {
                     msg.replyTo = { text: replyToMessage.text, username: replyToMessage.username };
@@ -487,12 +501,12 @@
                     const image = e.target.result;
                     const recipientId = document.getElementById('message-input').dataset.recipientId;
                     const messageId = Date.now() + Math.random().toString(36).substring(2);
-                    const msg = { 
-                        username, 
-                        image, 
-                        color: userColor, 
-                        language: userLanguage, 
-                        messageId 
+                    const msg = {
+                        username,
+                        image,
+                        color: userColor,
+                        language: userLanguage,
+                        messageId
                     };
                     if (replyToMessage) {
                         msg.replyTo = { text: replyToMessage.text, username: replyToMessage.username };
@@ -517,6 +531,7 @@
                 createDMTab(recipientId, recipientUsername);
             }
             switchTab(tabId);
+            loadDMHistory(recipientId); // Load DM history for this recipient
         }
 
         function createDMTab(recipientId, recipientUsername) {
@@ -564,7 +579,7 @@
                 document.getElementById('message-input').dataset.recipientId = recipientId;
                 document.getElementById('message-input').placeholder = `DM to ${dmTabs[recipientId].button.textContent.replace('DM: ', '')}...`;
             }
-            replyToMessage = null; // Reset reply context when switching tabs
+            replyToMessage = null;
         }
 
         function handleTyping() {
@@ -675,6 +690,25 @@
                 }
             }
             return 'Unknown';
+        }
+
+        // Message History Functions
+        function saveMessage(msg, recipientId = null) {
+            const history = JSON.parse(localStorage.getItem(`chatHistory_${username}_${recipientId || 'main'}`) || '[]');
+            history.push(msg);
+            localStorage.setItem(`chatHistory_${username}_${recipientId || 'main'}`, JSON.stringify(history));
+        }
+
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem(`chatHistory_${username}_main`) || '[]');
+            const chat = document.getElementById('chat');
+            history.forEach(msg => displayMessage(msg, chat));
+        }
+
+        function loadDMHistory(recipientId) {
+            const history = JSON.parse(localStorage.getItem(`chatHistory_${username}_${recipientId}`) || '[]');
+            const chat = dmTabs[recipientId].chat;
+            history.forEach(msg => displayMessage(msg, chat));
         }
     </script>
 </body>
