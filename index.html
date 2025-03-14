@@ -91,19 +91,25 @@
         #chat-area {
             flex: 1;
             padding: 20px;
-            overflow-y: auto;
+            overflow-y: hidden;
             background: #fff;
             display: none;
         }
         .chat-area {
             flex: 1;
             padding: 20px;
-            overflow-y: auto;
+            overflow-y: hidden;
             background: #fff;
             display: none;
+            position: relative;
         }
-        .chat-area.active { display: block; }
-        .chat-content { flex: 1; overflow-y: auto; }
+        .chat-area.active { display: flex; flex-direction: column; }
+        .chat-content {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 10px;
+            height: 0; /* Allows flex-grow to control height */
+        }
         .message {
             padding: 12px 15px;
             margin: 12px 0;
@@ -115,13 +121,13 @@
             position: relative;
         }
         .message.sent {
-            background: linear-gradient(135deg, #1E90FF, #45b7aa); /* Fixed blue for sender */
+            background: linear-gradient(135deg, #1E90FF, #45b7aa);
             color: #fff;
             margin-left: auto;
             align-self: flex-end;
         }
         .message.received {
-            background: linear-gradient(135deg, #f1f3f5, #e9ecef); /* Fixed grey for recipient */
+            background: linear-gradient(135deg, #f1f3f5, #e9ecef);
             color: #2f2f2f;
             margin-right: auto;
             align-self: flex-start;
@@ -130,7 +136,7 @@
         .message .meta { font-size: 0.75em; color: #7f8c8d; margin-top: 5px; }
         .message .username {
             font-weight: bold;
-            color: var(--username-color, #1E90FF); /* Use username color, default to blue */
+            color: var(--username-color, #1E90FF);
             margin-bottom: 5px;
             display: block;
         }
@@ -150,6 +156,7 @@
             display: flex;
             align-items: center;
             border-top: 1px solid #ddd;
+            flex-shrink: 0;
         }
         #message-input {
             flex: 1;
@@ -174,7 +181,13 @@
         }
         #send-button:hover, #image-button:hover { background: #45b7aa; }
         #image-input { display: none; }
-        #typing-indicator { color: #7f8c8d; font-style: italic; margin: 10px 0; font-size: 0.9em; }
+        #typing-indicator, .typing-indicator {
+            color: #7f8c8d;
+            font-style: italic;
+            margin: 10px 0;
+            font-size: 0.9em;
+            flex-shrink: 0;
+        }
         #color-picker-modal {
             display: none;
             position: fixed;
@@ -219,9 +232,9 @@
         </div>
         <div id="chat-area" class="chat-area active">
             <div class="chat-content"></div>
+            <div id="typing-indicator" class="typing-indicator"></div>
         </div>
         <div id="dm-tabs"></div>
-        <div id="typing-indicator"></div>
         <div id="input-area">
             <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeydown="if(event.key === 'Enter') sendMessage(event)">
             <select id="language-select" onchange="updateLanguage(event)">
@@ -320,7 +333,9 @@
 
         socket.on('chat message', msg => {
             console.log('Received chat message:', msg);
-            handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
+            if (activeTab === 'main') {
+                handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
+            }
         });
 
         socket.on('dm message', msg => {
@@ -348,11 +363,14 @@
         });
 
         function handleMessage(msg, chat, isDM) {
+            if (!chat) {
+                console.error('Chat container not found for message:', msg);
+                return;
+            }
             const div = document.createElement('div');
             div.className = `message ${msg.username === username ? 'sent' : 'received'}`;
             div.dataset.id = msg.messageId || msg.id;
             div.dataset.senderId = msg.senderId || '';
-            // Fixed bubble colors, username color set separately
             const usernameColor = msg.username === username ? userColor : (msg.color || '#1E90FF');
             div.style.setProperty('--username-color', usernameColor);
 
@@ -485,7 +503,6 @@
             const chatArea = tabId === 'main' ? document.getElementById('chat-area') : document.getElementById(tabId);
             if (chatArea) {
                 chatArea.classList.add('active');
-                // Ensure chat content is focused
                 const chatContent = chatArea.querySelector('.chat-content');
                 if (chatContent) chatContent.scrollTop = chatContent.scrollHeight;
             } else {
@@ -493,21 +510,28 @@
             }
 
             activeTab = tabId;
+            const input = document.getElementById('message-input');
             const recipientId = tabId.startsWith('dm-') ? tabId.replace('dm-', '') : '';
-            document.getElementById('message-input').dataset.recipient = recipientId;
-            document.getElementById('message-input').disabled = false;
-            document.getElementById('message-input').focus();
-            document.getElementById('message-input').placeholder = recipientId ? `DM to ${getRecipientUsername(recipientId)}...` : 'Type a message...';
+            input.dataset.recipient = recipientId;
+            input.disabled = false; // Ensure input is always enabled
+            input.focus();
+            input.placeholder = recipientId ? `DM to ${getRecipientUsername(recipientId)}...` : 'Type a message...';
             replyTo = null;
         }
 
         function sendMessage(e) {
             e.preventDefault();
             const input = document.getElementById('message-input');
-            if (input.disabled) return;
+            if (input.disabled) {
+                console.log('Input is disabled, cannot send message');
+                return;
+            }
             const text = input.value.trim();
-            if (!text) return;
-            const recipientId = input.dataset.recipient;
+            if (!text) {
+                console.log('No text to send');
+                return;
+            }
+            const recipientId = input.dataset.recipient || '';
             const msg = { username, text, color: userColor, language: userLanguage, id: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
             if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
             if (recipientId) {
@@ -516,7 +540,7 @@
                 console.log('Sent DM message:', msg);
             } else {
                 socket.emit('chat message', msg);
-                console.log('Sent chat message:', msg);
+                console.log('Sent main chat message:', msg);
             }
             input.value = '';
             socket.emit('stop typing');
@@ -529,7 +553,7 @@
             const reader = new FileReader();
             reader.onload = e => {
                 const msg = { username, image: e.target.result, color: userColor, language: userLanguage, id: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
-                const recipientId = document.getElementById('message-input').dataset.recipient;
+                const recipientId = document.getElementById('message-input').dataset.recipient || '';
                 if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
                 if (recipientId) {
                     msg.recipientId = recipientId;
@@ -537,7 +561,7 @@
                     console.log('Sent DM image:', msg);
                 } else {
                     socket.emit('chat message', msg);
-                    console.log('Sent chat image:', msg);
+                    console.log('Sent main chat image:', msg);
                 }
                 document.getElementById('image-input').value = '';
             };
