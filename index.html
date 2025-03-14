@@ -401,7 +401,8 @@
                     updateColorStyle();
                     console.log('User initialized:', { username, userColor, userLanguage });
 
-                    socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now().toString() });
+                    // Notify server of user connection
+                    socket.emit('user connected', { id: socket.id, username, color: userColor });
                     loadHistory();
                 })
                 .catch(err => {
@@ -420,13 +421,17 @@
 
         socket.on('user list', users => {
             console.log('User list updated:', users);
+            // Reset connectedUsers to avoid stale data
+            Object.keys(connectedUsers).forEach(id => delete connectedUsers[id]);
             users.forEach(user => {
-                connectedUsers[user.id] = user;
+                if (user.id && user.username) {
+                    connectedUsers[user.id] = user;
+                }
             });
             const ul = document.getElementById('user-list');
-            ul.innerHTML = users
+            ul.innerHTML = Object.values(connectedUsers)
                 .filter(u => u.username !== username)
-                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')"><span>${u.username}</span><button onclick="initiateCall('${u.id}', '${u.username}')">Call</button></li>`)
+                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')"><span>${u.username || 'Unknown'}</span><button onclick="initiateCall('${u.id}', '${u.username || 'Unknown'}')">Call</button></li>`)
                 .join('');
         });
 
@@ -440,7 +445,7 @@
             const recipientId = msg.recipientId === socket.id ? msg.senderId : msg.recipientId;
             let tab = dmTabs[recipientId];
             if (!tab) {
-                const recipientUsername = msg.username === username ? getRecipientUsername(recipientId) : msg.username;
+                const recipientUsername = msg.username === username ? getRecipientUsername(recipientId) : msg.username || 'Unknown';
                 createDMTab(recipientId, recipientUsername);
                 tab = dmTabs[recipientId];
             }
@@ -475,6 +480,12 @@
             endCall();
         });
 
+        socket.on('call error', message => {
+            console.log('Call error:', message);
+            showError(message);
+            endCall();
+        });
+
         socket.on('typing', username => updateTypingIndicator(username));
         socket.on('stop typing', () => updateTypingIndicator(''));
         socket.on('name change', data => updateNameChange(data));
@@ -501,7 +512,7 @@
 
             const usernameSpan = document.createElement('span');
             usernameSpan.className = 'username';
-            usernameSpan.textContent = msg.username === username ? 'You' : msg.username;
+            usernameSpan.textContent = msg.username === username ? 'You' : (msg.username || 'Unknown');
             div.appendChild(usernameSpan);
 
             let text = msg.text || '';
@@ -523,7 +534,7 @@
             if (msg.replyTo) {
                 const reply = document.createElement('div');
                 reply.className = 'reply-context';
-                reply.innerHTML = `<span class="reply-username">${msg.replyTo.username}</span><span class="reply-text">${msg.replyTo.text}</span>`;
+                reply.innerHTML = `<span class="reply-username">${msg.replyTo.username || 'Unknown'}</span><span class="reply-text">${msg.replyTo.text}</span>`;
                 div.insertAdjacentElement('afterbegin', reply);
             }
             if (msg.language !== userLanguage && text && !msg.image) {
@@ -826,6 +837,10 @@
         }
 
         function initiateCall(recipientId, recipientUsername) {
+            if (!connectedUsers[recipientId]) {
+                showError('Recipient is offline or unavailable');
+                return;
+            }
             document.getElementById('call-title').textContent = `Calling ${recipientUsername}`;
             document.getElementById('call-message').textContent = 'Waiting for response...';
             document.getElementById('call-modal').style.display = 'block';
@@ -833,46 +848,72 @@
             document.querySelector('#call-modal .accept').style.display = 'none';
             document.querySelector('#call-modal .reject').style.display = 'none';
 
-            peer = new SimplePeer({ initiator: true, trickle: false });
-            peer.on('signal', data => {
-                if (data.sdp) {
-                    socket.emit('call offer', { recipientId, offer: data });
-                } else if (data.candidate) {
-                    socket.emit('ice candidate', { recipientId, candidate: data });
-                }
-            });
-            peer.on('stream', stream => {
-                const audio = document.getElementById('remote-audio');
-                audio.srcObject = stream;
-                audio.play();
-                document.getElementById('call-interface').style.display = 'block';
-            });
-            peer.on('error', err => console.error('Peer error:', err));
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    peer = new SimplePeer({ initiator: true, trickle: false, stream });
+                    peer.on('signal', data => {
+                        if (data.sdp) {
+                            socket.emit('call offer', { recipientId, offer: data });
+                        } else if (data.candidate) {
+                            socket.emit('ice candidate', { recipientId, candidate: data });
+                        }
+                    });
+                    peer.on('stream', remoteStream => {
+                        const audio = document.getElementById('remote-audio');
+                        audio.srcObject = remoteStream;
+                        audio.play();
+                        document.getElementById('call-interface').style.display = 'block';
+                    });
+                    peer.on('error', err => {
+                        console.error('Peer error:', err);
+                        showError('Call failed: ' + err.message);
+                        endCall();
+                    });
+                })
+                .catch(err => {
+                    console.error('Microphone access error:', err);
+                    showError('Failed to access microphone');
+                });
         }
 
         function acceptCall(callerId, offer) {
+            if (!connectedUsers[callerId]) {
+                showError('Caller is offline or unavailable');
+                return;
+            }
             document.getElementById('call-title').textContent = `Call with ${connectedUsers[callerId]?.username || 'Unknown'}`;
             document.getElementById('call-message').textContent = '';
             document.querySelector('#call-modal .end').style.display = 'inline';
             document.querySelector('#call-modal .accept').style.display = 'none';
             document.querySelector('#call-modal .reject').style.display = 'none';
 
-            peer = new SimplePeer({ initiator: false, trickle: false });
-            peer.on('signal', data => {
-                if (data.sdp) {
-                    socket.emit('call answer', { callerId, answer: data });
-                } else if (data.candidate) {
-                    socket.emit('ice candidate', { recipientId: callerId, candidate: data });
-                }
-            });
-            peer.on('stream', stream => {
-                const audio = document.getElementById('remote-audio');
-                audio.srcObject = stream;
-                audio.play();
-                document.getElementById('call-interface').style.display = 'block';
-            });
-            peer.signal(offer);
-            peer.on('error', err => console.error('Peer error:', err));
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    peer = new SimplePeer({ initiator: false, trickle: false, stream });
+                    peer.on('signal', data => {
+                        if (data.sdp) {
+                            socket.emit('call answer', { callerId, answer: data });
+                        } else if (data.candidate) {
+                            socket.emit('ice candidate', { recipientId: callerId, candidate: data });
+                        }
+                    });
+                    peer.on('stream', remoteStream => {
+                        const audio = document.getElementById('remote-audio');
+                        audio.srcObject = remoteStream;
+                        audio.play();
+                        document.getElementById('call-interface').style.display = 'block';
+                    });
+                    peer.on('error', err => {
+                        console.error('Peer error:', err);
+                        showError('Call failed: ' + err.message);
+                        endCall();
+                    });
+                    peer.signal(offer);
+                })
+                .catch(err => {
+                    console.error('Microphone access error:', err);
+                    showError('Failed to access microphone');
+                });
         }
 
         function rejectCall() {

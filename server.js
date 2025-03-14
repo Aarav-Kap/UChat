@@ -10,10 +10,7 @@ const MongoDBStore = require('connect-mongodb-session')(session);
 
 // MongoDB Connection
 const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat';
-mongoose.connect(mongoURI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
+mongoose.connect(mongoURI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
@@ -40,7 +37,7 @@ app.use(session({
 
 app.get('/', (req, res) => {
     console.log('GET / - Session:', req.session);
-    if (!req.session.user) {
+    if (!req.session?.user) {
         return res.sendFile(path.join(__dirname, 'login.html'));
     }
     res.sendFile(path.join(__dirname, 'index.html'));
@@ -61,7 +58,7 @@ app.post('/login', (req, res) => {
 app.get('/user', (req, res) => {
     console.log('GET /user - Fetching user data', req.session);
     try {
-        if (!req.session || !req.session.user) {
+        if (!req.session?.user) {
             console.log('GET /user - No session or user data found');
             return res.status(401).json({ error: 'Not logged in' });
         }
@@ -81,7 +78,7 @@ app.post('/change-username', (req, res) => {
         console.log('POST /change-username - Invalid new username');
         return res.status(400).json({ error: 'New username must be at least 3 characters long' });
     }
-    if (req.session && req.session.user) {
+    if (req.session?.user) {
         req.session.user.username = newUsername;
     }
     console.log(`POST /change-username - Success: newUsername=${newUsername}`);
@@ -91,7 +88,7 @@ app.post('/change-username', (req, res) => {
 app.post('/change-color', (req, res) => {
     console.log('POST /change-color - Changing color');
     const { color } = req.body;
-    if (req.session && req.session.user) {
+    if (req.session?.user) {
         req.session.user.color = color;
     }
     console.log(`POST /change-color - Success: color=${color}`);
@@ -101,7 +98,7 @@ app.post('/change-color', (req, res) => {
 app.post('/update-language', (req, res) => {
     console.log('POST /update-language - Updating language');
     const { language } = req.body;
-    if (req.session && req.session.user) {
+    if (req.session?.user) {
         req.session.user.language = language;
     }
     console.log(`POST /update-language - Success: language=${language}`);
@@ -144,6 +141,9 @@ io.on('connection', socket => {
         const recipientSocket = connectedUsers.get(recipientId);
         if (recipientSocket) {
             recipientSocket.emit('call offer', { callerId: socket.id, offer });
+        } else {
+            console.warn(`Recipient ${recipientId} not found for call offer`);
+            socket.emit('call error', 'Recipient is offline or unavailable');
         }
     });
 
@@ -152,6 +152,8 @@ io.on('connection', socket => {
         const callerSocket = connectedUsers.get(callerId);
         if (callerSocket) {
             callerSocket.emit('call answer', { answer });
+        } else {
+            console.warn(`Caller ${callerId} not found for call answer`);
         }
     });
 
@@ -160,6 +162,8 @@ io.on('connection', socket => {
         const recipientSocket = connectedUsers.get(recipientId);
         if (recipientSocket) {
             recipientSocket.emit('ice candidate', { candidate });
+        } else {
+            console.warn(`Recipient ${recipientId} not found for ICE candidate`);
         }
     });
 
@@ -168,6 +172,8 @@ io.on('connection', socket => {
         const recipientSocket = connectedUsers.get(recipientId);
         if (recipientSocket) {
             recipientSocket.emit('call end');
+        } else {
+            console.warn(`Recipient ${recipientId} not found for call end`);
         }
     });
 
@@ -202,10 +208,18 @@ io.on('connection', socket => {
         io.emit('user list', Array.from(connectedUsers.values()));
     });
 
-    const user = { id: socket.id, username: socket.handshake.query.username, color: socket.handshake.query.color };
-    connectedUsers.set(socket.id, user);
-    io.emit('user count', connectedUsers.size);
-    io.emit('user list', Array.from(connectedUsers.values()));
+    // Ensure user data is properly set with username from session if available
+    fetch('/user', { method: 'GET', credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.username) {
+                const user = { id: socket.id, username: data.username, color: data.color || '#1E90FF' };
+                connectedUsers.set(socket.id, user);
+                io.emit('user count', connectedUsers.size);
+                io.emit('user list', Array.from(connectedUsers.values()));
+            }
+        })
+        .catch(err => console.error('Failed to fetch user data for socket:', err));
 });
 
 http.listen(process.env.PORT || 3000, () => {
