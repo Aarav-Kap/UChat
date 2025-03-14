@@ -7,21 +7,32 @@ const path = require('path');
 const mongoose = require('mongoose');
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
+const memoryStore = require('express-session').MemoryStore;
 
 // MongoDB Connection
 const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat';
-mongoose.connect(mongoURI)
+mongoose.connect(mongoURI, { serverSelectionTimeoutMS: 5000 })
     .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+    .catch(err => {
+        console.error('MongoDB connection error:', err.message);
+        console.warn('MongoDB connection failed. Server will continue with limited functionality.');
+    });
 
 // Session Store
-const store = new MongoDBStore({
-    uri: mongoURI,
-    collection: 'sessions',
-});
-store.on('error', err => {
-    console.error('Session store error:', err);
-});
+let sessionStore;
+try {
+    sessionStore = new MongoDBStore({
+        uri: mongoURI,
+        collection: 'sessions',
+    });
+    sessionStore.on('error', err => {
+        console.error('Session store error:', err.message);
+    });
+} catch (err) {
+    console.error('Failed to initialize MongoDB session store:', err.message);
+    console.warn('Falling back to MemoryStore for sessions (not recommended for production).');
+    sessionStore = new memoryStore();
+}
 
 // Middleware
 app.use(express.static(path.join(__dirname)));
@@ -31,9 +42,26 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret-key',
     resave: false,
     saveUninitialized: false,
-    store: store,
+    store: sessionStore,
     cookie: { maxAge: 2592000000, secure: process.env.NODE_ENV === 'production' },
 }));
+
+// Store the original /user handler
+const userHandler = (req, res) => {
+    console.log('GET /user - Fetching user data', req.session);
+    try {
+        if (!req.session?.user) {
+            console.log('GET /user - No session or user data found');
+            return res.status(401).json({ error: 'Not logged in' });
+        }
+        const { username, color, language } = req.session.user;
+        console.log(`GET /user - Success: username=${username}, color=${color}, language=${language}`);
+        res.json({ username, color, language });
+    } catch (error) {
+        console.error('GET /user - Error:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
 
 app.get('/', (req, res) => {
     console.log('GET / - Session:', req.session);
@@ -55,21 +83,7 @@ app.post('/login', (req, res) => {
     res.json({ success: true });
 });
 
-app.get('/user', (req, res) => {
-    console.log('GET /user - Fetching user data', req.session);
-    try {
-        if (!req.session?.user) {
-            console.log('GET /user - No session or user data found');
-            return res.status(401).json({ error: 'Not logged in' });
-        }
-        const { username, color, language } = req.session.user;
-        console.log(`GET /user - Success: username=${username}, color=${color}, language=${language}`);
-        res.json({ username, color, language });
-    } catch (error) {
-        console.error('GET /user - Error:', error.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+app.get('/user', userHandler);
 
 app.post('/change-username', (req, res) => {
     console.log('POST /change-username - Attempting to change username');
@@ -208,18 +222,33 @@ io.on('connection', socket => {
         io.emit('user list', Array.from(connectedUsers.values()));
     });
 
-    // Ensure user data is properly set with username from session if available
-    fetch('/user', { method: 'GET', credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
+    // Fetch user data using the app's route handler
+    const req = {
+        session: socket.request.session,
+        method: 'GET',
+        url: '/user',
+        credentials: 'include'
+    };
+    const res = {
+        json: (data) => {
             if (data.username) {
                 const user = { id: socket.id, username: data.username, color: data.color || '#1E90FF' };
                 connectedUsers.set(socket.id, user);
                 io.emit('user count', connectedUsers.size);
                 io.emit('user list', Array.from(connectedUsers.values()));
+            } else {
+                console.warn(`No username found for socket ${socket.id}`);
             }
-        })
-        .catch(err => console.error('Failed to fetch user data for socket:', err));
+        },
+        status: (code) => {
+            return {
+                json: (data) => {
+                    console.error(`User fetch failed with status ${code}:`, data.error);
+                }
+            };
+        }
+    };
+    userHandler(req, res);
 });
 
 http.listen(process.env.PORT || 3000, () => {
