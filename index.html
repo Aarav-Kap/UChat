@@ -223,36 +223,50 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
+        const socket = io({ reconnection: true, reconnectionAttempts: 5, reconnectionDelay: 1000 });
         let username = '', userColor = '#000000', userLanguage = 'en', activeTab = 'main', dmTabs = {}, replyTo = null;
 
+        // Debug Socket.IO connection
+        socket.on('connect', () => console.log('Socket.IO connected successfully'));
+        socket.on('connect_error', (err) => {
+            console.error('Socket.IO connection error:', err.message);
+            setTimeout(() => socket.connect(), 1000);
+        });
+        socket.on('disconnect', () => console.warn('Socket.IO disconnected'));
+
         // Initialize user data
-        fetch('/user')
-            .then(res => res.json())
+        fetch('/user', { method: 'GET', credentials: 'include' })
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                return res.json();
+            })
             .then(data => {
                 if (data.error) {
                     console.error('User fetch error:', data.error);
                     window.location.href = '/';
-                } else {
-                    username = data.username;
-                    userColor = data.color || '#000000';
-                    userLanguage = data.language || 'en';
-                    document.getElementById('current-username').textContent = `Welcome, ${username}`;
-                    document.getElementById('language-select').value = userLanguage;
-                    socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now() });
-                    loadHistory();
+                    return;
                 }
+                username = data.username;
+                userColor = data.color || '#000000';
+                userLanguage = data.language || 'en';
+                document.getElementById('current-username').textContent = `Welcome, ${username}`;
+                document.getElementById('language-select').value = userLanguage;
+                console.log('User initialized:', { username, userColor, userLanguage });
+
+                // Emit join message
+                socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now() });
+                loadHistory();
             })
             .catch(err => {
-                console.error('Fetch user error:', err);
-                window.location.href = '/';
+                console.error('Fetch /user error:', err);
+                document.getElementById('current-username').textContent = 'Failed to load user data. Redirecting...';
+                setTimeout(() => window.location.href = '/', 2000);
             });
 
         // Socket event handlers
-        socket.on('connect', () => console.log('Connected to Socket.IO server'));
         socket.on('user count', count => {
             console.log('User count updated:', count);
-            document.getElementById('user-count').textContent = count;
+            document.getElementById('user-count').textContent = count || 0;
         });
         socket.on('user list', users => {
             console.log('User list updated:', users);
@@ -286,7 +300,7 @@
         async function handleMessage(msg, chat, isDM) {
             const div = document.createElement('div');
             div.className = `message ${msg.username === username ? 'sent' : 'received'}`;
-            div.dataset.id = msg.id;
+            div.dataset.id = msg.messageId || msg.id;
 
             let text = msg.text || '';
             if (msg.language !== userLanguage && text && !msg.image) {
@@ -294,7 +308,9 @@
                     const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${msg.language}|${userLanguage}`);
                     const data = await res.json();
                     text = data.responseStatus === 200 ? data.responseData.translatedText : text;
-                } catch (e) { console.error('Translation error:', e); }
+                } catch (e) {
+                    console.error('Translation error:', e);
+                }
             }
 
             const content = msg.image ? `<img src="${msg.image}" alt="Image">` : text;
@@ -332,7 +348,7 @@
         }
         function updateTypingIndicator(username) {
             const indicator = activeTab === 'main' ? document.getElementById('typing-indicator') : dmTabs[activeTab.replace('dm-', '')]?.typingIndicator;
-            indicator.textContent = username ? `${username} is typing...` : '';
+            if (indicator) indicator.textContent = username ? `${username} is typing...` : '';
         }
         function updateNameChange(data) {
             if (data.oldUsername === username) username = data.newUsername;
@@ -347,10 +363,17 @@
             });
         }
         function updateUserColor(data) {
-            document.querySelector(`#user-list li[onclick*="startDM('${data.id}')"]`)?.style.color = data.color;
+            const userLi = document.querySelector(`#user-list li[onclick*="startDM('${data.id}')"]`);
+            if (userLi) userLi.style.color = data.color;
         }
 
         // Tab management
+        function startDM(recipientId, recipientUsername) {
+            if (!dmTabs[recipientId]) {
+                createDMTab(recipientId, recipientUsername);
+                switchTab(`dm-${recipientId}`);
+            }
+        }
         function createDMTab(recipientId, recipientUsername) {
             const tabs = document.getElementById('tabs');
             const tabBtn = document.createElement('button');
@@ -393,9 +416,16 @@
             const recipientId = input.dataset.recipient;
             const msg = { username, text, color: userColor, language: userLanguage, id: Date.now() + Math.random().toString(36).substr(2, 9) };
             if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
-            if (recipientId) { msg.recipientId = recipientId; socket.emit('dm message', msg); }
-            else { socket.emit('chat message', msg); }
-            input.value = ''; socket.emit('stop typing');
+            if (recipientId) {
+                msg.recipientId = recipientId;
+                socket.emit('dm message', msg);
+                console.log('Sent DM message:', msg);
+            } else {
+                socket.emit('chat message', msg);
+                console.log('Sent chat message:', msg);
+            }
+            input.value = '';
+            socket.emit('stop typing');
         }
         function sendImage(e) {
             e.preventDefault();
@@ -406,8 +436,14 @@
                 const msg = { username, image: e.target.result, color: userColor, language: userLanguage, id: Date.now() + Math.random().toString(36).substr(2, 9) };
                 const recipientId = document.getElementById('message-input').dataset.recipient;
                 if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
-                if (recipientId) { msg.recipientId = recipientId; socket.emit('dm message', msg); }
-                else { socket.emit('chat message', msg); }
+                if (recipientId) {
+                    msg.recipientId = recipientId;
+                    socket.emit('dm message', msg);
+                    console.log('Sent DM image:', msg);
+                } else {
+                    socket.emit('chat message', msg);
+                    console.log('Sent chat image:', msg);
+                }
                 document.getElementById('image-input').value = '';
             };
             reader.readAsDataURL(file);
@@ -420,12 +456,26 @@
         function changeUsername(e) {
             e.preventDefault();
             const newName = prompt('New username:');
-            if (newName && newName.trim()) fetch('/change-username', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newUsername: newName.trim() })
-            }).then(res => res.json()).then(data => {
-                if (data.success) socket.emit('name change', { oldUsername: username, newUsername: newName.trim(), id: socket.id });
-                else alert(data.message || 'Failed');
-            }).catch(err => { console.error(err); alert('Error'); });
+            if (newName && newName.trim()) {
+                fetch('/change-username', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ newUsername: newName.trim() })
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            socket.emit('name change', { oldUsername: username, newUsername: newName.trim(), id: socket.id });
+                            console.log('Username changed:', newName);
+                        } else {
+                            alert(data.message || 'Failed to change username');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Change username error:', err);
+                        alert('Error changing username');
+                    });
+            }
         }
         function showColorPicker(e) {
             e.preventDefault();
@@ -440,21 +490,43 @@
             e.preventDefault();
             const newColor = document.getElementById('color-picker').value;
             fetch('/change-color', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color: newColor }) })
-                .then(res => res.json()).then(data => {
-                    if (data.success) { userColor = newColor; socket.emit('color change', { id: socket.id, color: newColor }); hideColorPicker(e); }
-                    else alert(data.message || 'Failed');
-                }).catch(err => { console.error(err); alert('Error'); });
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        userColor = newColor;
+                        socket.emit('color change', { id: socket.id, color: newColor });
+                        hideColorPicker(e);
+                        console.log('Color changed:', newColor);
+                    } else {
+                        alert(data.message || 'Failed to change color');
+                    }
+                })
+                .catch(err => {
+                    console.error('Change color error:', err);
+                    alert('Error changing color');
+                });
         }
         function updateLanguage(e) {
             e.preventDefault();
             userLanguage = document.getElementById('language-select').value;
             fetch('/update-language', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: userLanguage }) })
-                .then(res => res.json()).then(data => { if (!data.success) alert(data.message || 'Failed'); })
-                .catch(err => { console.error(err); alert('Error'); });
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.success) alert(data.message || 'Failed to update language');
+                })
+                .catch(err => {
+                    console.error('Update language error:', err);
+                    alert('Error updating language');
+                });
         }
         function logout(e) {
             e.preventDefault();
-            fetch('/logout').then(() => window.location.href = '/').catch(err => { console.error(err); alert('Error'); });
+            fetch('/logout')
+                .then(() => window.location.href = '/')
+                .catch(err => {
+                    console.error('Logout error:', err);
+                    alert('Error logging out');
+                });
         }
         function setReply(msg) {
             replyTo = msg;
