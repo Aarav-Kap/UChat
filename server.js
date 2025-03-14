@@ -75,7 +75,7 @@ app.post('/register', async (req, res) => {
         const user = new User({ username, password: hashedPassword });
         await user.save();
         console.log('Registered user:', username);
-        req.session.user = { username, color: '#000000' }; // Default color
+        req.session.user = { username, color: '#000000', language: 'en' }; // Default language
         res.redirect('/');
     } catch (err) {
         console.error('Register error:', err);
@@ -93,7 +93,7 @@ app.post('/login', async (req, res) => {
             return res.status(401).send('Invalid username or password');
         }
 
-        req.session.user = { username, color: req.session.user?.color || '#000000' };
+        req.session.user = { username, color: req.session.user?.color || '#000000', language: req.session.user?.language || 'en' };
         res.redirect('/');
     } catch (err) {
         console.error('Login error:', err);
@@ -106,9 +106,9 @@ app.get('/logout', (req, res) => {
     res.redirect('/');
 });
 
-app.get('/username', (req, res) => {
+app.get('/user', (req, res) => {
     if (req.session.user) {
-        res.json({ username: req.session.user.username, color: req.session.user.color });
+        res.json({ username: req.session.user.username, color: req.session.user.color, language: req.session.user.language });
     } else {
         res.status(401).json({ error: 'Not logged in' });
     }
@@ -152,6 +152,17 @@ app.post('/change-color', (req, res) => {
     res.json({ success: true });
 });
 
+app.post('/update-language', (req, res) => {
+    if (!req.session.user) return res.status(401).json({ success: false, message: 'Not logged in' });
+    const { language } = req.body;
+    if (!language || !['en', 'fr', 'es', 'pt', 'ru', 'hi'].includes(language)) {
+        return res.status(400).json({ success: false, message: 'Invalid language' });
+    }
+
+    req.session.user.language = language;
+    res.json({ success: true });
+});
+
 let userCount = 0;
 let connectedUsers = {};
 const MAX_USERS = 20; // Limit concurrent users to reduce server load
@@ -171,9 +182,10 @@ io.on('connection', (socket) => {
 
     const username = session.user.username;
     const userColor = session.user.color || '#000000';
+    const userLanguage = session.user.language || 'en';
     userCount++;
     console.log('User connected:', username, 'userCount:', userCount);
-    connectedUsers[socket.id] = { username, id: socket.id, color: userColor };
+    connectedUsers[socket.id] = { username, id: socket.id, color: userColor, language: userLanguage };
     io.emit('user count', userCount);
     io.emit('user list', Object.values(connectedUsers));
 
@@ -182,6 +194,7 @@ io.on('connection', (socket) => {
             console.error('Invalid message received:', msg);
             return;
         }
+        msg.language = connectedUsers[socket.id].language; // Add sender's language
         console.log('Broadcasting chat message from:', msg.username);
         io.emit('chat message', msg);
     });
@@ -191,6 +204,7 @@ io.on('connection', (socket) => {
             console.error('Invalid DM received:', msg);
             return;
         }
+        msg.language = connectedUsers[socket.id].language; // Add sender's language
         console.log('Sending DM from:', msg.username, 'to:', msg.recipientId);
         msg.senderId = socket.id;
         io.to(msg.recipientId).emit('dm message', { ...msg, isDM: true });
