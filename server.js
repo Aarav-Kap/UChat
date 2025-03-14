@@ -20,7 +20,7 @@ const sessionMiddleware = session({
         collectionName: 'sessions',
         ttl: 30 * 24 * 60 * 60 // 30 days
     }),
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production' } // 30 days, secure only in production
+    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: false } // Temporarily disable secure for debugging
 });
 
 app.use(express.json());
@@ -98,21 +98,23 @@ app.get('/', (req, res) => {
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
     console.log('POST /register - Request body:', req.body);
-    if (!username || !password) return res.status(400).send('Username and password are required');
+    if (!username || !password) {
+        return res.status(400).send('Username and password are required');
+    }
 
     try {
         const existingUser = await User.findOne({ username });
-        if (existingUser) return res.status(400).send('Username already exists');
+        if (existingUser) {
+            return res.status(400).send('Username already exists');
+        }
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new User({ username, password: hashedPassword });
         await user.save();
         req.session.user = { username, color: '#000000', language: 'en' };
-        req.session.save(err => {
-            if (err) console.error('Session save error:', err);
-            console.log('User registered and session saved:', username);
-            res.redirect('/');
-        });
+        await req.session.save();
+        console.log('User registered and session saved:', username);
+        res.redirect('/');
     } catch (err) {
         console.error('Register error:', err);
         res.status(500).send('Server error');
@@ -122,7 +124,9 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     console.log('POST /login - Request body:', req.body);
-    if (!username || !password) return res.status(400).send('Username and password are required');
+    if (!username || !password) {
+        return res.status(400).send('Username and password are required');
+    }
 
     try {
         const user = await User.findOne({ username });
@@ -132,11 +136,9 @@ app.post('/login', async (req, res) => {
         }
 
         req.session.user = { username, color: req.session.user?.color || '#000000', language: req.session.user?.language || 'en' };
-        req.session.save(err => {
-            if (err) console.error('Session save error:', err);
-            console.log('User logged in and session saved:', username);
-            res.redirect('/');
-        });
+        await req.session.save();
+        console.log('User logged in and session saved:', username);
+        res.redirect('/');
     } catch (err) {
         console.error('Login error:', err);
         res.status(500).send('Server error');
@@ -184,11 +186,9 @@ app.post('/change-username', async (req, res) => {
         // Update ChatHistory
         await ChatHistory.updateMany({ username: oldUsername }, { username: newUsername });
         req.session.user.username = newUsername;
-        req.session.save(err => {
-            if (err) console.error('Session save error:', err);
-            console.log('Username changed from', oldUsername, 'to', newUsername);
-            res.json({ success: true });
-        });
+        await req.session.save();
+        console.log('Username changed from', oldUsername, 'to', newUsername);
+        res.json({ success: true });
     } catch (err) {
         console.error('Change username error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
@@ -427,8 +427,10 @@ async function saveChatMessage(msg, socket, recipientId = null) {
     }
 }
 
-http.listen(process.env.PORT || 3000, '0.0.0.0', () => {
-    console.log('Server running on port', process.env.PORT || 3000);
+// Listen on the port provided by Render
+const PORT = process.env.PORT;
+http.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
 });
 
 process.on('uncaughtException', (error) => {
