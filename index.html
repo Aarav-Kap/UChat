@@ -95,7 +95,15 @@
             background: #fff;
             display: none;
         }
-        #chat-area.active { display: block; }
+        .chat-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fff;
+            display: none;
+        }
+        .chat-area.active { display: block; }
+        .chat-content { flex: 1; overflow-y: auto; }
         .message {
             padding: 12px 15px;
             margin: 12px 0;
@@ -107,13 +115,13 @@
             position: relative;
         }
         .message.sent {
-            background: linear-gradient(135deg, var(--user-color, #1E90FF), var(--user-color-light, #45b7aa));
+            background: linear-gradient(135deg, #1E90FF, #45b7aa); /* Fixed blue for sender */
             color: #fff;
             margin-left: auto;
             align-self: flex-end;
         }
         .message.received {
-            background: linear-gradient(135deg, #f1f3f5, #e9ecef);
+            background: linear-gradient(135deg, #f1f3f5, #e9ecef); /* Fixed grey for recipient */
             color: #2f2f2f;
             margin-right: auto;
             align-self: flex-start;
@@ -122,14 +130,14 @@
         .message .meta { font-size: 0.75em; color: #7f8c8d; margin-top: 5px; }
         .message .username {
             font-weight: bold;
-            color: var(--user-color, #1E90FF);
+            color: var(--username-color, #1E90FF); /* Use username color, default to blue */
             margin-bottom: 5px;
             display: block;
         }
         .reply-context {
             background: #f8f9fa;
             padding: 10px;
-            border-left: 4px solid var(--user-color, #1E90FF);
+            border-left: 4px solid #1E90FF;
             margin-bottom: 8px;
             border-radius: 8px;
             font-size: 0.85em;
@@ -153,10 +161,10 @@
             outline: none;
             transition: border-color 0.2s;
         }
-        #message-input:focus { border-color: var(--user-color, #1E90FF); }
+        #message-input:focus { border-color: #1E90FF; }
         #send-button, #image-button {
             padding: 12px 18px;
-            background: var(--user-color, #1E90FF);
+            background: #1E90FF;
             color: white;
             border: none;
             border-radius: 6px;
@@ -164,7 +172,7 @@
             font-size: 1em;
             transition: background 0.2s;
         }
-        #send-button:hover, #image-button:hover { background: var(--user-color-light, #45b7aa); }
+        #send-button:hover, #image-button:hover { background: #45b7aa; }
         #image-input { display: none; }
         #typing-indicator { color: #7f8c8d; font-style: italic; margin: 10px 0; font-size: 0.9em; }
         #color-picker-modal {
@@ -209,7 +217,9 @@
         <div id="tabs">
             <button class="tab-button active" data-tab="main" onclick="switchTab('main')">Main Chat</button>
         </div>
-        <div id="chat-area" class="chat-area active"></div>
+        <div id="chat-area" class="chat-area active">
+            <div class="chat-content"></div>
+        </div>
         <div id="dm-tabs"></div>
         <div id="typing-indicator"></div>
         <div id="input-area">
@@ -310,7 +320,7 @@
 
         socket.on('chat message', msg => {
             console.log('Received chat message:', msg);
-            handleMessage(msg, document.getElementById('chat-area'), false);
+            handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
         });
 
         socket.on('dm message', msg => {
@@ -342,12 +352,13 @@
             div.className = `message ${msg.username === username ? 'sent' : 'received'}`;
             div.dataset.id = msg.messageId || msg.id;
             div.dataset.senderId = msg.senderId || '';
-            div.style.setProperty('--user-color', msg.username === username ? userColor : (msg.color || '#1E90FF'));
-            div.style.setProperty('--user-color-light', lightenColor(msg.username === username ? userColor : (msg.color || '#1E90FF'), 10));
+            // Fixed bubble colors, username color set separately
+            const usernameColor = msg.username === username ? userColor : (msg.color || '#1E90FF');
+            div.style.setProperty('--username-color', usernameColor);
 
             const usernameSpan = document.createElement('span');
             usernameSpan.className = 'username';
-            usernameSpan.textContent = msg.username;
+            usernameSpan.textContent = msg.username === username ? 'You' : msg.username;
             div.appendChild(usernameSpan);
 
             let text = msg.text || '';
@@ -427,8 +438,7 @@
             connectedUsers[data.id].color = data.color;
             document.querySelectorAll('.message.received').forEach(msg => {
                 if (msg.dataset.senderId === data.id) {
-                    msg.style.setProperty('--user-color', data.color);
-                    msg.style.setProperty('--user-color-light', lightenColor(data.color, 10));
+                    msg.style.setProperty('--username-color', data.color);
                     msg.querySelector('.username').style.color = data.color;
                 }
             });
@@ -475,6 +485,9 @@
             const chatArea = tabId === 'main' ? document.getElementById('chat-area') : document.getElementById(tabId);
             if (chatArea) {
                 chatArea.classList.add('active');
+                // Ensure chat content is focused
+                const chatContent = chatArea.querySelector('.chat-content');
+                if (chatContent) chatContent.scrollTop = chatContent.scrollHeight;
             } else {
                 console.error('Chat area not found for tab:', tabId);
             }
@@ -633,7 +646,7 @@
 
         function loadHistory() {
             const history = JSON.parse(localStorage.getItem(`history_${username}_main`) || '[]');
-            history.forEach(msg => handleMessage(msg, document.getElementById('chat-area'), false));
+            history.forEach(msg => handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false));
         }
 
         function loadDMHistory(recipientId) {
@@ -643,6 +656,7 @@
 
         function updateColorStyle() {
             document.documentElement.style.setProperty('--user-color', userColor);
+            document.documentElement.style.setProperty('--username-color', userColor);
             document.documentElement.style.setProperty('--user-color-light', lightenColor(userColor, 10));
         }
 
