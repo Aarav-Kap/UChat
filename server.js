@@ -20,7 +20,7 @@ const sessionMiddleware = session({
         collectionName: 'sessions',
         ttl: 30 * 24 * 60 * 60 // 30 days
     }),
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000 } // 30 days
+    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production' } // 30 days
 });
 
 app.use(express.json());
@@ -64,7 +64,7 @@ const chatHistorySchema = new mongoose.Schema({
         text: String,
         color: String,
         language: String,
-        messageId: String,
+        messageId: { type: String, required: true }, // Use client-provided ID as string
         replyTo: {
             username: String,
             text: String
@@ -216,20 +216,18 @@ let userCount = 0;
 let connectedUsers = {};
 const MAX_USERS = 20;
 
-// [Previous code remains the same until io.on('connection')...]
-
 io.on('connection', (socket) => {
     const session = socket.handshake.session;
     console.log('Socket connection attempt - Session:', session);
     if (!session || !session.user) {
         console.warn('No session or user found for socket:', socket.id);
-        socket.emit('chat message', { username: 'System', text: 'Please log in to continue.', id: Date.now() });
+        socket.emit('chat message', { username: 'System', text: 'Please log in to continue.', id: Date.now().toString() });
         socket.disconnect();
         return;
     }
 
     if (userCount >= MAX_USERS) {
-        socket.emit('chat message', { username: 'System', text: 'Server is full. Please try again later.', id: Date.now() });
+        socket.emit('chat message', { username: 'System', text: 'Server is full. Please try again later.', id: Date.now().toString() });
         socket.disconnect();
         return;
     }
@@ -253,7 +251,7 @@ io.on('connection', (socket) => {
         }
         msg.language = connectedUsers[socket.id]?.language || 'en';
         msg.isDM = false;
-        msg.messageId = msg.id;
+        msg.messageId = msg.id.toString(); // Ensure messageId is a string
         console.log('Broadcasting main chat message from:', msg.username, 'Message:', msg);
         io.emit('chat message', msg);
         await saveChatMessage(msg, socket);
@@ -267,7 +265,7 @@ io.on('connection', (socket) => {
         msg.language = connectedUsers[socket.id]?.language || 'en';
         msg.isDM = true;
         msg.senderId = socket.id;
-        msg.messageId = msg.id;
+        msg.messageId = msg.id.toString(); // Ensure messageId is a string
         const recipientSocket = Object.keys(connectedUsers).find(id => id === msg.recipientId);
         if (recipientSocket) {
             console.log('Sending DM from:', msg.username, 'to:', msg.recipientId, 'Message:', msg);
@@ -276,7 +274,7 @@ io.on('connection', (socket) => {
             await saveChatMessage(msg, socket, msg.recipientId);
         } else {
             console.error('Recipient not found for DM:', msg.recipientId);
-            socket.emit('chat message', { username: 'System', text: 'Recipient is offline.', id: Date.now() });
+            socket.emit('chat message', { username: 'System', text: 'Recipient is offline.', id: Date.now().toString() });
         }
     });
 
@@ -336,8 +334,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// [Remaining code (loadChatHistory, saveChatMessage, http.listen, process.on) remains the same]
-
 // Chat History Functions
 async function loadChatHistory(socket) {
     const session = socket.handshake.session;
@@ -376,7 +372,18 @@ async function saveChatMessage(msg, socket, recipientId = null) {
             history = new ChatHistory({ username, recipientId, messages: [] });
         }
         msg.timestamp = new Date();
-        history.messages.push(msg);
+        // Ensure messageId is a string and use it directly
+        history.messages.push({
+            username: msg.username,
+            text: msg.text,
+            color: msg.color,
+            language: msg.language,
+            messageId: msg.messageId,
+            replyTo: msg.replyTo,
+            isDM: msg.isDM,
+            image: msg.image,
+            timestamp: msg.timestamp
+        });
         await history.save();
         console.log('Saved message for:', username, 'Recipient:', recipientId, 'Message:', msg);
 
@@ -386,7 +393,17 @@ async function saveChatMessage(msg, socket, recipientId = null) {
             if (!recipientHistory) {
                 recipientHistory = new ChatHistory({ username: connectedUsers[recipientId]?.username, recipientId: socket.id, messages: [] });
             }
-            recipientHistory.messages.push(msg);
+            recipientHistory.messages.push({
+                username: msg.username,
+                text: msg.text,
+                color: msg.color,
+                language: msg.language,
+                messageId: msg.messageId,
+                replyTo: msg.replyTo,
+                isDM: msg.isDM,
+                image: msg.image,
+                timestamp: msg.timestamp
+            });
             await recipientHistory.save();
             console.log('Saved DM for recipient:', connectedUsers[recipientId]?.username);
         }
