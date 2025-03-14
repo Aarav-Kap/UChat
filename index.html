@@ -43,8 +43,21 @@
             background: #3c3c3c;
             cursor: pointer;
             transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         #user-list li:hover { background: #4a4a4a; }
+        #user-list li button {
+            padding: 5px 10px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+        #user-list li button:hover { background: #c0392b; }
         #chat-container {
             flex: 1;
             display: flex;
@@ -128,7 +141,7 @@
             flex: 1;
             overflow-y: auto;
             padding-bottom: 10px;
-            min-height: 0; /* Allows flex to constrain height */
+            min-height: 0;
         }
         .message {
             padding: 12px 15px;
@@ -235,6 +248,41 @@
         }
         #color-picker { width: 60px; height: 60px; cursor: pointer; }
         select { padding: 12px; border-radius: 6px; margin-right: 10px; font-size: 1em; }
+        #call-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            z-index: 1000;
+        }
+        #call-modal button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #call-modal .accept { background: #2ecc71; color: white; }
+        #call-modal .reject { background: #e74c3c; color: white; }
+        #call-modal .end { background: #e74c3c; color: white; }
+        #call-modal .mute { background: #3498db; color: white; }
+        #call-interface {
+            display: none;
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
@@ -287,13 +335,29 @@
                 <button onclick="hideColorPicker(event)">Cancel</button>
             </div>
         </div>
+        <div id="call-modal">
+            <h3 id="call-title"></h3>
+            <p id="call-message"></p>
+            <button class="accept" onclick="acceptCall()">Accept</button>
+            <button class="reject" onclick="rejectCall()">Reject</button>
+            <button class="end" onclick="endCall()" style="display: none;">End Call</button>
+        </div>
+        <div id="call-interface">
+            <button class="mute" onclick="toggleMute()">Mute</button>
+            <button class="end" onclick="endCall()">End Call</button>
+            <audio id="remote-audio" autoplay></audio>
+        </div>
+        <audio id="notification-sound" src="https://www.soundjay.com/buttons/beep-01a.mp3" preload="auto"></audio>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
     <script>
         const socket = io(window.location.origin, { reconnection: true, reconnectionAttempts: 5, reconnectionDelay: 1000 });
         let username = '', userColor = '#1E90FF', userLanguage = 'en', activeTab = 'main', dmTabs = {}, replyTo = null;
         const connectedUsers = {};
+        let peer = null;
+        let isMuted = false;
 
         socket.on('connect', () => console.log('Socket.IO connected successfully'));
         socket.on('connect_error', (err) => {
@@ -311,15 +375,21 @@
         }
 
         function initializeUser() {
+            console.log('Attempting to fetch user data from /user');
             fetch('/user', { method: 'GET', credentials: 'include' })
                 .then(res => {
-                    if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                    console.log('Fetch /user response status:', res.status);
+                    if (!res.ok) {
+                        return res.json().then(err => {
+                            throw new Error(`HTTP error! Status: ${res.status}, Message: ${err.error || 'Unknown error'}`);
+                        });
+                    }
                     return res.json();
                 })
                 .then(data => {
                     if (data.error) {
                         console.error('User fetch error:', data.error);
-                        showError('Failed to load user data. Redirecting to login...');
+                        showError('Failed to load user data: ' + data.error);
                         setTimeout(() => window.location.href = '/', 2000);
                         return;
                     }
@@ -335,8 +405,8 @@
                     loadHistory();
                 })
                 .catch(err => {
-                    console.error('Fetch /user error:', err);
-                    showError('Failed to load user data. Redirecting to login...');
+                    console.error('Fetch /user error:', err.message);
+                    showError('Failed to load user data: ' + err.message);
                     setTimeout(() => window.location.href = '/', 2000);
                 });
         }
@@ -356,7 +426,7 @@
             const ul = document.getElementById('user-list');
             ul.innerHTML = users
                 .filter(u => u.username !== username)
-                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')">${u.username}</li>`)
+                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')"><span>${u.username}</span><button onclick="initiateCall('${u.id}', '${u.username}')">Call</button></li>`)
                 .join('');
         });
 
@@ -375,7 +445,34 @@
                 tab = dmTabs[recipientId];
             }
             handleMessage(msg, tab.chat, true);
+            if (activeTab !== `dm-${recipientId}`) {
+                playNotificationSound();
+            }
             saveMessage(msg, recipientId);
+        });
+
+        socket.on('call offer', ({ callerId, offer }) => {
+            console.log('Received call offer from:', callerId);
+            document.getElementById('call-title').textContent = `Incoming Call from ${connectedUsers[callerId]?.username || 'Unknown'}`;
+            document.getElementById('call-message').textContent = 'Do you want to accept?';
+            document.getElementById('call-modal').style.display = 'block';
+            document.querySelector('#call-modal .accept').onclick = () => acceptCall(callerId, offer);
+            document.querySelector('#call-modal .reject').onclick = rejectCall;
+        });
+
+        socket.on('call answer', ({ answer }) => {
+            console.log('Received call answer');
+            if (peer) peer.signal(answer);
+        });
+
+        socket.on('ice candidate', ({ candidate }) => {
+            console.log('Received ICE candidate');
+            if (peer) peer.signal(candidate);
+        });
+
+        socket.on('call end', () => {
+            console.log('Call ended by remote');
+            endCall();
         });
 
         socket.on('typing', username => updateTypingIndicator(username));
@@ -726,6 +823,90 @@
             g = Math.min(255, Math.floor(g + (255 - g) * (percent / 100)));
             b = Math.min(255, Math.floor(b + (255 - b) * (percent / 100)));
             return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+        }
+
+        function initiateCall(recipientId, recipientUsername) {
+            document.getElementById('call-title').textContent = `Calling ${recipientUsername}`;
+            document.getElementById('call-message').textContent = 'Waiting for response...';
+            document.getElementById('call-modal').style.display = 'block';
+            document.querySelector('#call-modal .end').style.display = 'inline';
+            document.querySelector('#call-modal .accept').style.display = 'none';
+            document.querySelector('#call-modal .reject').style.display = 'none';
+
+            peer = new SimplePeer({ initiator: true, trickle: false });
+            peer.on('signal', data => {
+                if (data.sdp) {
+                    socket.emit('call offer', { recipientId, offer: data });
+                } else if (data.candidate) {
+                    socket.emit('ice candidate', { recipientId, candidate: data });
+                }
+            });
+            peer.on('stream', stream => {
+                const audio = document.getElementById('remote-audio');
+                audio.srcObject = stream;
+                audio.play();
+                document.getElementById('call-interface').style.display = 'block';
+            });
+            peer.on('error', err => console.error('Peer error:', err));
+        }
+
+        function acceptCall(callerId, offer) {
+            document.getElementById('call-title').textContent = `Call with ${connectedUsers[callerId]?.username || 'Unknown'}`;
+            document.getElementById('call-message').textContent = '';
+            document.querySelector('#call-modal .end').style.display = 'inline';
+            document.querySelector('#call-modal .accept').style.display = 'none';
+            document.querySelector('#call-modal .reject').style.display = 'none';
+
+            peer = new SimplePeer({ initiator: false, trickle: false });
+            peer.on('signal', data => {
+                if (data.sdp) {
+                    socket.emit('call answer', { callerId, answer: data });
+                } else if (data.candidate) {
+                    socket.emit('ice candidate', { recipientId: callerId, candidate: data });
+                }
+            });
+            peer.on('stream', stream => {
+                const audio = document.getElementById('remote-audio');
+                audio.srcObject = stream;
+                audio.play();
+                document.getElementById('call-interface').style.display = 'block';
+            });
+            peer.signal(offer);
+            peer.on('error', err => console.error('Peer error:', err));
+        }
+
+        function rejectCall() {
+            document.getElementById('call-modal').style.display = 'none';
+            if (peer) peer.destroy();
+            peer = null;
+        }
+
+        function endCall() {
+            socket.emit('call end', peer ? Object.keys(connectedUsers).find(id => id !== socket.id) : null);
+            if (peer) peer.destroy();
+            peer = null;
+            document.getElementById('call-modal').style.display = 'none';
+            document.getElementById('call-interface').style.display = 'none';
+            const audio = document.getElementById('remote-audio');
+            if (audio.srcObject) {
+                audio.srcObject.getTracks().forEach(track => track.stop());
+                audio.srcObject = null;
+            }
+        }
+
+        function toggleMute() {
+            if (!peer) return;
+            const tracks = peer.getSenders().find(s => s.track.kind === 'audio')?.track;
+            if (tracks) {
+                isMuted = !isMuted;
+                tracks.enabled = !isMuted;
+                document.querySelector('#call-interface .mute').textContent = isMuted ? 'Unmute' : 'Mute';
+            }
+        }
+
+        function playNotificationSound() {
+            const audio = document.getElementById('notification-sound');
+            audio.play().catch(err => console.error('Failed to play notification sound:', err));
         }
 
         loadHistory();
