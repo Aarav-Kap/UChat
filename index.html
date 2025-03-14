@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UlisChat Reimagined</title>
+    <title>UlisChat</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -207,7 +207,7 @@
                 <option value="hi">Hindi</option>
             </select>
             <input type="file" id="image-input" accept="image/*" onchange="sendImage(event)">
-            <button id="send-button" onclick="sendMessage(event)">Send</button>
+            <button id="send-button" onclick="sendMessage(event)">Send to Ulis!</button>
             <button id="image-button" onclick="document.getElementById('image-input').click()">Image</button>
         </div>
         <div id="color-picker-modal">
@@ -230,27 +230,44 @@
         fetch('/user')
             .then(res => res.json())
             .then(data => {
-                if (data.error) window.location.href = '/';
-                else {
+                if (data.error) {
+                    console.error('User fetch error:', data.error);
+                    window.location.href = '/';
+                } else {
                     username = data.username;
                     userColor = data.color || '#000000';
                     userLanguage = data.language || 'en';
                     document.getElementById('current-username').textContent = `Welcome, ${username}`;
                     document.getElementById('language-select').value = userLanguage;
-                    socket.emit('chat message', { username: 'System', text: `${username} has joined` });
+                    socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now() });
                     loadHistory();
                 }
             })
-            .catch(err => { console.error(err); window.location.href = '/'; });
+            .catch(err => {
+                console.error('Fetch user error:', err);
+                window.location.href = '/';
+            });
 
         // Socket event handlers
-        socket.on('user count', count => document.getElementById('user-count').textContent = count);
-        socket.on('user list', users => {
-            const ul = document.getElementById('user-list');
-            ul.innerHTML = users.filter(u => u.username !== username).map(u => `<li style="color: ${u.color || '#e0e0e0'}" onclick="startDM('${u.id}', '${u.username}')">${u.username}</li>`).join('');
+        socket.on('connect', () => console.log('Connected to Socket.IO server'));
+        socket.on('user count', count => {
+            console.log('User count updated:', count);
+            document.getElementById('user-count').textContent = count;
         });
-        socket.on('chat message', msg => handleMessage(msg, document.getElementById('chat-area'), false));
+        socket.on('user list', users => {
+            console.log('User list updated:', users);
+            const ul = document.getElementById('user-list');
+            ul.innerHTML = users
+                .filter(u => u.username !== username)
+                .map(u => `<li style="color: ${u.color || '#e0e0e0'}" onclick="startDM('${u.id}', '${u.username}')">${u.username}</li>`)
+                .join('');
+        });
+        socket.on('chat message', msg => {
+            console.log('Received chat message:', msg);
+            handleMessage(msg, document.getElementById('chat-area'), false);
+        });
         socket.on('dm message', msg => {
+            console.log('Received DM message:', msg);
             const recipientId = msg.recipientId === socket.id ? msg.senderId : msg.recipientId;
             let tab = dmTabs[recipientId];
             if (!tab) {
@@ -269,7 +286,7 @@
         async function handleMessage(msg, chat, isDM) {
             const div = document.createElement('div');
             div.className = `message ${msg.username === username ? 'sent' : 'received'}`;
-            div.dataset.id = msg.messageId;
+            div.dataset.id = msg.id;
 
             let text = msg.text || '';
             if (msg.language !== userLanguage && text && !msg.image) {
