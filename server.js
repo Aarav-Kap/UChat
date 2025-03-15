@@ -4,20 +4,41 @@ const http = require('http').Server(app);
 const io = require('socket.io')(http);
 const cookieParser = require('cookie-parser');
 const path = require('path');
-const mongoose = require('mongoose'); // Assuming MongoDB is used
+const mongoose = require('mongoose');
 
-// MongoDB Connection (adjust URI as needed)
-mongoose.connect('mongodb://localhost:27017/ulischat', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
+// MongoDB Connection
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat'; // Fallback for local dev
+mongoose.connect(mongoUri)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
+// Session Setup
+const session = require('express-session');
+const MongoDBStore = require('connect-mongodb-session')(session);
+
+const store = new MongoDBStore({
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat', // Use same URI as Mongoose
+    collection: 'sessions'
+});
+
+store.on('error', err => {
+    console.error('Session store error:', err);
+});
+
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2', // Use env var or fallback to provided secret
+    resave: false,
+    saveUninitialized: false,
+    store: store,
+    cookie: { maxAge: 2592000000 } // 30 days
+}));
+
+// Middleware
 app.use(express.static(path.join(__dirname)));
 app.use(express.json());
 app.use(cookieParser());
 
+// Routes
 app.get('/', (req, res) => {
     console.log('GET / - Serving login page');
     res.sendFile(path.join(__dirname, 'login.html'));
@@ -30,7 +51,6 @@ app.post('/login', (req, res) => {
         console.log('POST /login - Invalid username or password');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
-    // Save session (assuming MongoDB or in-memory session)
     req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
     console.log(`POST /login - Success for username: ${username}`);
     res.json({ success: true });
@@ -90,7 +110,7 @@ app.get('/logout', (req, res) => {
     console.log('GET /logout - Logging out');
     req.session.destroy(err => {
         if (err) console.error('GET /logout - Error destroying session:', err);
-        res.clearCookie('connect.sid'); // Adjust cookie name based on your session store
+        res.clearCookie('connect.sid');
         console.log('GET /logout - Session destroyed');
         res.redirect('/');
     });
@@ -150,26 +170,6 @@ io.on('connection', socket => {
     io.emit('user count', connectedUsers.size);
     io.emit('user list', Array.from(connectedUsers.values()));
 });
-
-const session = require('express-session');
-const MongoDBStore = require('connect-mongodb-session')(session);
-
-const store = new MongoDBStore({
-    uri: 'mongodb://localhost:27017/ulischat',
-    collection: 'sessions'
-});
-
-store.on('error', err => {
-    console.error('Session store error:', err);
-});
-
-app.use(session({
-    secret: 'your-secret-key', // Replace with a secure secret
-    resave: false,
-    saveUninitialized: false,
-    store: store,
-    cookie: { maxAge: 2592000000 } // 30 days
-}));
 
 http.listen(process.env.PORT || 3000, () => {
     console.log(`Server running on port ${process.env.PORT || 3000}`);
