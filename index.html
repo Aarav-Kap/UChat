@@ -358,6 +358,8 @@
         const connectedUsers = {};
         let peer = null;
         let isMuted = false;
+        let historyLoaded = false; // Prevent history reload on reconnect
+        const processedMessages = new Set(); // Deduplicate messages
 
         socket.on('connect', () => console.log('Socket.IO connected successfully'));
         socket.on('connect_error', (err) => {
@@ -390,7 +392,6 @@
                     if (data.error) {
                         console.error('User fetch error:', data.error);
                         showError('Failed to load user data: ' + data.error);
-                        // Do not redirect; instead, show login prompt or reload login page manually
                         document.getElementById('current-username').textContent = 'Please log in';
                         return;
                     }
@@ -403,7 +404,10 @@
                     console.log('User initialized:', { username, userColor, userLanguage });
 
                     socket.emit('user connected', { id: socket.id, username, color: userColor });
-                    loadHistory();
+                    if (!historyLoaded) {
+                        loadHistory();
+                        historyLoaded = true;
+                    }
                 })
                 .catch(err => {
                     console.error('Fetch /user error:', err.message);
@@ -412,7 +416,10 @@
                 });
         }
 
-        initializeUser();
+        socket.on('connect', () => {
+            console.log('Socket.IO connected successfully');
+            initializeUser();
+        });
 
         socket.on('user count', count => {
             console.log('User count updated:', count);
@@ -499,11 +506,13 @@
         });
 
         function handleMessage(msg, chat, isDM) {
-            if (!chat) {
-                console.error('Chat container not found for message:', msg);
+            if (!chat || processedMessages.has(msg.messageId)) {
+                console.log('Skipping duplicate or invalid message:', msg);
                 return;
             }
+            processedMessages.add(msg.messageId);
             console.log('Handling message for chat:', chat.id, 'Message:', msg);
+
             const div = document.createElement('div');
             div.className = `message ${msg.username === username ? 'sent' : 'received'}`;
             div.dataset.id = msg.messageId || msg.id;
@@ -675,7 +684,7 @@
                 return;
             }
             const recipientId = input.dataset.recipient || '';
-            const msg = { username, text, color: userColor, language: userLanguage, id: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
+            const msg = { username, text, color: userColor, language: userLanguage, messageId: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
             if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
             if (recipientId) {
                 msg.recipientId = recipientId;
@@ -695,7 +704,7 @@
             if (!file) return;
             const reader = new FileReader();
             reader.onload = e => {
-                const msg = { username, image: e.target.result, color: userColor, language: userLanguage, id: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
+                const msg = { username, image: e.target.result, color: userColor, language: userLanguage, messageId: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
                 const recipientId = document.getElementById('message-input').dataset.recipient || '';
                 if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
                 if (recipientId) {
@@ -962,7 +971,7 @@
             audio.play().catch(err => console.error('Failed to play notification sound:', err));
         }
 
-        loadHistory();
+        initializeUser();
     </script>
 </body>
 </html>
