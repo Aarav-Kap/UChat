@@ -17,6 +17,7 @@ const server = http.createServer(app);
 const io = socketIO(server);
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat';
+mongoose.set('strictQuery', false); // Suppress Mongoose strictQuery deprecation warning
 mongoose.connect(mongoUri, {
     serverSelectionTimeoutMS: 5000,
     maxPoolSize: 10,
@@ -42,7 +43,7 @@ const sessionMiddleware = session({
 app.use(helmet());
 app.use(express.json());
 app.use(cookieParser());
-app.use(express.static('public'));
+app.use(express.static('.')); // Serve static files from the root directory
 app.use(sessionMiddleware);
 app.use(csrf({ cookie: true }));
 
@@ -50,9 +51,9 @@ const connectedUsers = new Map();
 
 app.get('/', (req, res) => {
     if (!req.session || !req.session.user) {
-        res.sendFile(path.join(__dirname, 'public', 'login.html'), { csrfToken: req.csrfToken() });
+        res.sendFile(path.join(__dirname, 'login.html'), { csrfToken: req.csrfToken() });
     } else {
-        res.sendFile(path.join(__dirname, 'public', 'index.html'), { csrfToken: req.csrfToken() });
+        res.sendFile(path.join(__dirname, 'index.html'), { csrfToken: req.csrfToken() });
     }
 });
 
