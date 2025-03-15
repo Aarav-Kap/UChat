@@ -3,80 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - UlisChat</title>
+    <title>UlisChat - Login</title>
     <style>
+        :root {
+            --primary-color: #4ecdc4;
+            --hover-color: #45b7aa;
+            --background-color: linear-gradient(135deg, #1E90FF, #45b7aa);
+        }
         body {
             font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: linear-gradient(135deg, #f5f7fa, #e0e5ec);
-            margin: 0;
+            background: var(--background-color);
         }
-        .login-container {
-            background: #fff;
+        .container {
+            background: rgba(255, 255, 255, 0.9);
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            width: 300px;
             text-align: center;
+            width: 300px;
         }
-        h2 { margin-bottom: 20px; color: #333; }
+        h2 { color: var(--primary-color); }
         input {
-            width: 100%;
+            width: 80%;
             padding: 10px;
             margin: 10px 0;
-            border: 1px solid #ddd;
+            border: 1px solid #ccc;
             border-radius: 5px;
-            box-sizing: border-box;
         }
         button {
-            width: 100%;
+            width: 80%;
             padding: 10px;
-            background: #4ecdc4;
-            color: white;
+            background: var(--primary-color);
             border: none;
             border-radius: 5px;
+            color: white;
             cursor: pointer;
-            font-size: 1em;
         }
-        button:hover { background: #45b7aa; }
+        button:hover { background: var(--hover-color); }
         .register-link { margin-top: 10px; }
-        .register-link a { color: #4ecdc4; text-decoration: none; }
+        .register-link a { color: var(--primary-color); text-decoration: none; }
         .register-link a:hover { text-decoration: underline; }
+        #toggleForm { display: none; }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <h2>Login</h2>
-        <form action="/login" method="post">
+    <div class="container">
+        <h2>UlisChat</h2>
+        <form id="loginForm" action="/login" method="post" onsubmit="return validateForm(this)">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <input type="text" name="username" placeholder="Username" required>
             <input type="password" name="password" placeholder="Password" required>
             <button type="submit">Login</button>
         </form>
         <div class="register-link">
-            Don't have an account? <a href="#" onclick="showRegister()">Register</a>
+            Don't have an account? <a href="#" onclick="toggleForm()">Register</a>
         </div>
-        <div id="register-form" style="display: none;">
-            <form action="/register" method="post">
-                <input type="text" name="username" placeholder="Username" required>
-                <input type="password" name="password" placeholder="Password" required>
-                <button type="submit">Register</button>
-            </form>
-            <div><a href="#" onclick="showLogin()">Back to Login</a></div>
-        </div>
+        <form id="toggleForm" action="/register" method="post" onsubmit="return validateForm(this)" style="display: none;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <input type="password" name="confirmPassword" placeholder="Confirm Password" required>
+            <button type="submit">Register</button>
+        </form>
     </div>
     <script>
-        function showRegister() {
-            document.querySelector('form').style.display = 'none';
-            document.querySelector('.register-link').style.display = 'none';
-            document.getElementById('register-form').style.display = 'block';
+        function toggleForm() {
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('toggleForm');
+            if (registerForm.style.display === 'none') {
+                loginForm.style.display = 'none';
+                registerForm.style.display = 'block';
+            } else {
+                loginForm.style.display = 'block';
+                registerForm.style.display = 'none';
+            }
         }
-        function showLogin() {
-            document.querySelector('form').style.display = 'block';
-            document.querySelector('.register-link').style.display = 'block';
-            document.getElementById('register-form').style.display = 'none';
+        function validateForm(form) {
+            const username = form.username.value;
+            const password = form.password.value;
+            const confirmPassword = form.confirmPassword?.value;
+            if (username.length < 3 || password.length < 3) {
+                alert('Username and password must be at least 3 characters long');
+                return false;
+            }
+            if (confirmPassword && password !== confirmPassword) {
+                alert('Passwords do not match');
+                return false;
+            }
+            return true;
         }
     </script>
 </body>
