@@ -30,7 +30,7 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     store: store,
-    cookie: { maxAge: 2592000000 } // 30 days
+    cookie: { maxAge: 2592000000, httpOnly: true, secure: process.env.NODE_ENV === 'production' } // Secure cookie for HTTPS
 }));
 
 // Middleware
@@ -41,13 +41,17 @@ app.use(cookieParser());
 // Routes
 app.get('/', (req, res) => {
     const loginPath = path.join(__dirname, 'login.html');
-    console.log('GET / - Serving login page from:', loginPath);
-    res.sendFile(loginPath, err => {
-        if (err) {
-            console.error('GET / - Error serving login.html:', err);
-            res.status(500).send('Error loading login page');
-        }
-    });
+    console.log('GET / - Checking session, serving login page from:', loginPath);
+    if (!req.session || !req.session.user) {
+        res.sendFile(loginPath, err => {
+            if (err) {
+                console.error('GET / - Error serving login.html:', err);
+                res.status(500).send('Error loading login page');
+            }
+        });
+    } else {
+        res.redirect('/index.html');
+    }
 });
 
 app.post('/login', (req, res) => {
@@ -59,7 +63,13 @@ app.post('/login', (req, res) => {
     }
     req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
     console.log('POST /login - Session after setting user:', req.session);
-    res.json({ success: true });
+    req.session.save(err => {
+        if (err) {
+            console.error('POST /login - Error saving session:', err);
+            return res.status(500).json({ error: 'Failed to save session' });
+        }
+        res.json({ success: true });
+    });
 });
 
 app.get('/user', (req, res) => {
@@ -87,6 +97,9 @@ app.post('/change-username', (req, res) => {
     }
     if (req.session && req.session.user) {
         req.session.user.username = newUsername;
+        req.session.save(err => {
+            if (err) console.error('POST /change-username - Error saving session:', err);
+        });
     }
     console.log(`POST /change-username - Success: newUsername=${newUsername}`);
     res.json({ success: true });
@@ -97,6 +110,9 @@ app.post('/change-color', (req, res) => {
     const { color } = req.body;
     if (req.session && req.session.user) {
         req.session.user.color = color;
+        req.session.save(err => {
+            if (err) console.error('POST /change-color - Error saving session:', err);
+        });
     }
     console.log(`POST /change-color - Success: color=${color}`);
     res.json({ success: true });
@@ -107,6 +123,9 @@ app.post('/update-language', (req, res) => {
     const { language } = req.body;
     if (req.session && req.session.user) {
         req.session.user.language = language;
+        req.session.save(err => {
+            if (err) console.error('POST /update-language - Error saving session:', err);
+        });
     }
     console.log(`POST /update-language - Success: language=${language}`);
     res.json({ success: true });
@@ -179,7 +198,12 @@ io.on('connection', socket => {
         io.emit('user list', Array.from(connectedUsers.values()));
     });
 
-    const user = { id: socket.id, username: socket.handshake.query.username, color: socket.handshake.query.color };
+    // Pass session username and color to Socket.IO if available
+    const user = req.session?.user ? {
+        id: socket.id,
+        username: req.session.user.username,
+        color: req.session.user.color
+    } : { id: socket.id, username: '', color: '#1E90FF' };
     connectedUsers.set(socket.id, user);
     io.emit('user count', connectedUsers.size);
     io.emit('user list', Array.from(connectedUsers.values()));
