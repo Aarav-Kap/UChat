@@ -7,7 +7,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 
 // MongoDB Connection
-const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat'; // Fallback for local dev
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat';
 mongoose.connect(mongoUri)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
@@ -17,7 +17,7 @@ const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 
 const store = new MongoDBStore({
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat', // Use same URI as Mongoose
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/ulischat',
     collection: 'sessions'
 });
 
@@ -26,7 +26,7 @@ store.on('error', err => {
 });
 
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2', // Use env var or fallback to provided secret
+    secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2',
     resave: false,
     saveUninitialized: false,
     store: store,
@@ -40,8 +40,14 @@ app.use(cookieParser());
 
 // Routes
 app.get('/', (req, res) => {
-    console.log('GET / - Serving login page');
-    res.sendFile(path.join(__dirname, 'login.html'));
+    const loginPath = path.join(__dirname, 'login.html');
+    console.log('GET / - Serving login page from:', loginPath);
+    res.sendFile(loginPath, err => {
+        if (err) {
+            console.error('GET / - Error serving login.html:', err);
+            res.status(500).send('Error loading login page');
+        }
+    });
 });
 
 app.post('/login', (req, res) => {
@@ -52,7 +58,7 @@ app.post('/login', (req, res) => {
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
-    console.log(`POST /login - Success for username: ${username}`);
+    console.log('POST /login - Session after setting user:', req.session);
     res.json({ success: true });
 });
 
@@ -114,6 +120,14 @@ app.get('/logout', (req, res) => {
         console.log('GET /logout - Session destroyed');
         res.redirect('/');
     });
+});
+
+app.get('/index.html', (req, res) => {
+    if (!req.session || !req.session.user) {
+        console.log('GET /index.html - User not logged in, redirecting to /');
+        return res.redirect('/');
+    }
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const connectedUsers = new Map();
