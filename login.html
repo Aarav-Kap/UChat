@@ -28,8 +28,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password }),
-                    credentials: 'include', // Ensure cookies are sent
-                    redirect: 'manual' // Prevent fetch from following redirects
+                    credentials: 'include',
+                    redirect: 'manual'
                 });
                 console.log('Login response status:', response.status);
                 console.log('Login response headers:', response.headers.get('Location'));

@@ -63,6 +63,11 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
+app.get('/register', (req, res) => {
+    console.log('GET /register - Session ID:', req.sessionID);
+    res.sendFile(path.join(__dirname, 'register.html'));
+});
+
 app.get('/chat', (req, res) => {
     console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session.userId);
     if (!req.session.userId) {
