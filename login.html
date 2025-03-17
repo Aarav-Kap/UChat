@@ -6,82 +6,120 @@
     <title>Login - UlisChat</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Roboto', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
+            background: linear-gradient(135deg, #f5f7fa, #e0e5ec);
             margin: 0;
-            background-color: #f0f0f0;
         }
         .login-container {
-            background-color: white;
+            background: #fff;
             padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 300px;
             text-align: center;
         }
+        h2 { margin-bottom: 20px; color: #333; }
         input {
-            display: block;
             width: 100%;
+            padding: 10px;
             margin: 10px 0;
-            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
             box-sizing: border-box;
         }
         button {
-            padding: 10px 20px;
-            background-color: #00ced1;
+            width: 100%;
+            padding: 10px;
+            background: #4ecdc4;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 1em;
         }
-        button:hover {
-            background-color: #008b8b;
-        }
-        #color-picker {
-            margin: 10px 0;
-        }
+        button:hover { background: #45b7aa; }
+        .register-link { margin-top: 10px; }
+        .register-link a { color: #4ecdc4; text-decoration: none; }
+        .register-link a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="login-container">
         <h2>Login</h2>
-        <form id="login-form" method="POST" action="/login">
-            <input type="text" id="username" name="username" placeholder="Username" required minlength="3">
-            <input type="password" id="password" name="password" placeholder="Password" required minlength="3">
-            <input type="color" id="color-picker" name="color" value="#1E90FF">
-            <select name="language" id="language-select">
-                <option value="en">English</option>
-                <option value="fr">French</option>
-                <option value="es">Spanish</option>
-                <option value="pt">Portuguese</option>
-                <option value="ru">Russian</option>
-                <option value="hi">Hindi</option>
-            </select>
+        <form id="login-form">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
             <button type="submit">Login</button>
         </form>
+        <div class="register-link">
+            Don't have an account? <a href="#" onclick="showRegister()">Register</a>
+        </div>
+        <div id="register-form" style="display: none;">
+            <form id="register-form-inner" action="/register" method="post">
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Register</button>
+            </form>
+            <div><a href="#" onclick="showLogin()">Back to Login</a></div>
+        </div>
     </div>
-
     <script>
-        document.getElementById('login-form').addEventListener('submit', function(event) {
-            event.preventDefault();
-            const formData = new FormData(this);
+        function showRegister() {
+            document.getElementById('login-form').style.display = 'none';
+            document.querySelector('.register-link').style.display = 'none';
+            document.getElementById('register-form').style.display = 'block';
+        }
+        function showLogin() {
+            document.getElementById('login-form').style.display = 'block';
+            document.querySelector('.register-link').style.display = 'block';
+            document.getElementById('register-form').style.display = 'none';
+        }
+
+        document.getElementById('login-form').addEventListener('submit', e => {
+            e.preventDefault();
+            const username = document.querySelector('#login-form input[name="username"]').value;
+            const password = document.querySelector('#login-form input[name="password"]').value;
             fetch('/login', {
                 method: 'POST',
-                body: formData,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
                 credentials: 'include'
             })
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    window.location.href = '/'; // Redirect to index.html on success
+                    window.location.href = '/index.html';
                 } else {
                     alert(data.error || 'Login failed');
                 }
             })
-            .catch(error => console.error('Login error:', error));
+            .catch(err => alert('Login error: ' + err));
+        });
+
+        document.getElementById('register-form-inner').addEventListener('submit', e => {
+            e.preventDefault();
+            const username = document.querySelector('#register-form-inner input[name="username"]').value;
+            const password = document.querySelector('#register-form-inner input[name="password"]').value;
+            fetch('/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
+                credentials: 'include'
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/index.html';
+                } else {
+                    alert(data.error || 'Registration failed');
+                }
+            })
+            .catch(err => alert('Registration error: ' + err));
         });
     </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'921f2cca5b4fc9b8',t:'MTc0MjI0MjY1OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>

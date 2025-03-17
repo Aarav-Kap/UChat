@@ -5,98 +5,93 @@ const io = require('socket.io')(http);
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const mongoose = require('mongoose');
-require('dotenv').config();
-
-console.log('MONGODB_URI:', process.env.MONGODB_URI);
-
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
-
-app.use(express.static(path.join(__dirname)));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 
+// MongoDB Connection
+const mongoURI = 'mongodb+srv://newadmin:NewPass123!@ulischatcluster.9fkuw.mongodb.net/ulischat?retryWrites=true&w=majority&appName=UlisChatCluster';
+mongoose.connect(mongoURI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
+    .then(() => console.log('Connected to MongoDB'))
+    .catch(err => console.error('MongoDB connection error:', err));
+
+// Session Store
 const store = new MongoDBStore({
-    uri: process.env.MONGODB_URI,
-    collection: 'sessions'
+    uri: mongoURI,
+    collection: 'sessions',
 });
 
 store.on('error', err => {
     console.error('Session store error:', err);
 });
 
-store.on('connected', () => {
-    console.log('Session store connected to MongoDB');
-});
-
 const sessionMiddleware = session({
-    secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2',
+    secret: 'UlisChat_Secret_2025!@#xK9pLmQ2',
     resave: false,
     saveUninitialized: false,
     store: store,
     cookie: { 
         maxAge: 2592000000, // 30 days
+        secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        secure: false, // Set to false for local testing
-        sameSite: 'lax'
-    }
+    },
 });
 
+app.use(express.static(path.join(__dirname)));
+app.use(express.json());
+app.use(cookieParser());
 app.use(sessionMiddleware);
 
+// Apply session middleware to Socket.IO
 io.use((socket, next) => {
-    sessionMiddleware(socket.request, socket.request.res || {}, next);
+    sessionMiddleware(socket.request, {}, next);
 });
 
 app.get('/', (req, res) => {
-    console.log('GET / - Serving login page, session ID:', req.sessionID, 'session:', req.session);
+    console.log('GET / - Serving login page');
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
+app.get('/index.html', (req, res) => {
+    if (!req.session || !req.session.user) {
+        console.log('GET /index.html - No session, redirecting to /');
+        return res.redirect('/');
+    }
+    console.log('GET /index.html - Serving chat page');
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 app.post('/login', (req, res) => {
-    console.log('POST /login - Login attempt, body:', req.body, 'session ID:', req.sessionID, 'session before:', req.session);
+    console.log('POST /login - Login attempt', req.body);
     const { username, password } = req.body;
     if (!username || username.length < 3 || !password) {
         console.log('POST /login - Invalid username or password');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
-
     req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
-    console.log('POST /login - Setting session.user:', req.session.user, 'session ID:', req.sessionID);
+    console.log(`POST /login - Success for username: ${username}`);
+    res.json({ success: true });
+});
 
-    req.session.save(err => {
-        if (err) {
-            console.error('POST /login - Error saving session:', err);
-            return res.status(500).json({ error: 'Failed to save session' });
-        }
-        console.log('POST /login - Session saved successfully, session:', req.session);
-        // Verify the session was saved to the store
-        store.get(req.sessionID, (err, sessionData) => {
-            if (err) {
-                console.error('POST /login - Error retrieving session from store:', err);
-                return res.status(500).json({ error: 'Failed to verify session' });
-            }
-            console.log('POST /login - Session data in store:', sessionData);
-            res.json({ success: true });
-        });
-    });
+app.post('/register', (req, res) => {
+    console.log('POST /register - Register attempt', req.body);
+    const { username, password } = req.body;
+    if (!username || username.length < 3 || !password) {
+        console.log('POST /register - Invalid username or password');
+        return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
+    }
+    req.session.user = { username, color: '#1E90FF', language: 'en' };
+    console.log(`POST /register - Success for username: ${username}`);
+    res.json({ success: true });
 });
 
 app.get('/user', (req, res) => {
-    console.log('GET /user - Fetching user data, session ID:', req.sessionID, 'session:', req.session);
+    console.log('GET /user - Fetching user data', req.session);
     try {
         if (!req.session || !req.session.user) {
             console.log('GET /user - No session or user data found, redirecting to login');
-            // Check the store directly to debug
-            store.get(req.sessionID, (err, sessionData) => {
-                if (err) console.error('GET /user - Error retrieving session from store:', err);
-                console.log('GET /user - Session data in store:', sessionData);
-            });
             return res.status(401).json({ error: 'Not logged in' });
         }
         const { username, color, language } = req.session.user;
@@ -109,7 +104,7 @@ app.get('/user', (req, res) => {
 });
 
 app.post('/change-username', (req, res) => {
-    console.log('POST /change-username - Attempting to change username, session:', req.session);
+    console.log('POST /change-username - Attempting to change username');
     const { newUsername } = req.body;
     if (!newUsername || newUsername.length < 3) {
         console.log('POST /change-username - Invalid new username');
@@ -117,89 +112,52 @@ app.post('/change-username', (req, res) => {
     }
     if (req.session && req.session.user) {
         req.session.user.username = newUsername;
-        req.session.save(err => {
-            if (err) {
-                console.error('POST /change-username - Error saving session:', err);
-                return res.status(500).json({ error: 'Failed to save session' });
-            }
-            console.log(`POST /change-username - Success: newUsername=${newUsername}`);
-            res.json({ success: true });
-        });
-    } else {
-        res.status(401).json({ error: 'Not logged in' });
     }
+    console.log(`POST /change-username - Success: newUsername=${newUsername}`);
+    res.json({ success: true });
 });
 
 app.post('/change-color', (req, res) => {
-    console.log('POST /change-color - Changing color, session:', req.session);
+    console.log('POST /change-color - Changing color');
     const { color } = req.body;
     if (req.session && req.session.user) {
         req.session.user.color = color;
-        req.session.save(err => {
-            if (err) {
-                console.error('POST /change-color - Error saving session:', err);
-                return res.status(500).json({ error: 'Failed to save session' });
-            }
-            console.log(`POST /change-color - Success: color=${color}`);
-            res.json({ success: true });
-        });
-    } else {
-        res.status(401).json({ error: 'Not logged in' });
     }
+    console.log(`POST /change-color - Success: color=${color}`);
+    res.json({ success: true });
 });
 
 app.post('/update-language', (req, res) => {
-    console.log('POST /update-language - Updating language, session:', req.session);
+    console.log('POST /update-language - Updating language');
     const { language } = req.body;
     if (req.session && req.session.user) {
         req.session.user.language = language;
-        req.session.save(err => {
-            if (err) {
-                console.error('POST /update-language - Error saving session:', err);
-                return res.status(500).json({ error: 'Failed to save session' });
-            }
-            console.log(`POST /update-language - Success: language=${language}`);
-            res.json({ success: true });
-        });
-    } else {
-        res.status(401).json({ error: 'Not logged in' });
     }
+    console.log(`POST /update-language - Success: language=${language}`);
+    res.json({ success: true });
 });
 
 app.get('/logout', (req, res) => {
-    console.log('GET /logout - Logging out, session ID:', req.sessionID, 'session:', req.session);
-    if (req.session) {
-        req.session.destroy(err => {
-            if (err) {
-                console.error('GET /logout - Error destroying session:', err);
-                return res.status(500).send('Error logging out');
-            }
-            res.clearCookie('connect.sid');
-            console.log('GET /logout - Session destroyed, redirecting to /');
-            res.redirect('/');
-        });
-    } else {
-        console.log('GET /logout - No session found, redirecting to /');
+    console.log('GET /logout - Logging out');
+    req.session.destroy(err => {
+        if (err) console.error('GET /logout - Error destroying session:', err);
+        res.clearCookie('connect.sid');
+        console.log('GET /logout - Session destroyed');
         res.redirect('/');
-    }
+    });
 });
 
 const connectedUsers = new Map();
 
 io.on('connection', socket => {
-    console.log(`Socket connected: ${socket.id}, session ID:`, socket.request.sessionID, 'session:', socket.request.session);
     const session = socket.request.session;
     if (!session || !session.user) {
-        console.log('Socket connection - No session or user data found, disconnecting');
+        console.log(`Socket ${socket.id} - No session, disconnecting`);
         socket.disconnect(true);
         return;
     }
-    const username = session.user.username;
-    const color = session.user.color || '#1E90FF';
-    connectedUsers.set(socket.id, { id: socket.id, username, color });
-
-    io.emit('user count', connectedUsers.size);
-    io.emit('user list', Array.from(connectedUsers.values()));
+    const { username, color } = session.user;
+    console.log(`Socket connected: ${socket.id} for user: ${username}`);
 
     socket.on('chat message', msg => {
         console.log(`Broadcasting main chat message: ${JSON.stringify(msg)}`);
@@ -211,7 +169,7 @@ io.on('connection', socket => {
         console.log(`Sending DM from ${socket.id} to ${msg.recipientId}: ${JSON.stringify(msg)}`);
         socket.emit('dm message', { ...msg, senderId: socket.id });
         if (recipientSocket) {
-            io.to(recipientSocket.id).emit('dm message', { ...msg, senderId: socket.id });
+            recipientSocket.emit('dm message', { ...msg, senderId: socket.id });
         }
     });
 
@@ -245,6 +203,11 @@ io.on('connection', socket => {
         io.emit('user count', connectedUsers.size);
         io.emit('user list', Array.from(connectedUsers.values()));
     });
+
+    const user = { id: socket.id, username, color };
+    connectedUsers.set(socket.id, user);
+    io.emit('user count', connectedUsers.size);
+    io.emit('user list', Array.from(connectedUsers.values()));
 });
 
 http.listen(process.env.PORT || 3000, () => {
