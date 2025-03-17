@@ -10,7 +10,7 @@ require('dotenv').config(); // Load environment variables from the hosting platf
 // Log the MONGODB_URI to debug
 console.log('MONGODB_URI:', process.env.MONGODB_URI);
 
-// MongoDB Connection using environment variable
+// MongoDB Connection (still needed for session store)
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));

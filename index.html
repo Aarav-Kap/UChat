@@ -298,7 +298,6 @@
                         id: Date.now().toString(),
                         system: true 
                     });
-                    loadHistory();
                 })
                 .catch(err => {
                     console.error('Fetch /user error:', err);
@@ -315,7 +314,11 @@
             const chatArea = document.getElementById(tabId === 'main' ? 'chat-area' : tabId);
             if (chatArea) chatArea.classList.add('active');
             activeTab = tabId;
-            loadHistory();
+            // No history loading since messages are not saved
+            const chatContent = document.querySelector(`#${tabId === 'main' ? 'chat-area' : tabId} .chat-content`);
+            if (chatContent) {
+                chatContent.scrollTop = chatContent.scrollHeight;
+            }
         }
 
         function sendMessage(event) {
@@ -349,14 +352,6 @@
                 socket.emit('typing', username);
             } else {
                 socket.emit('stop typing');
-            }
-        }
-
-        function loadHistory() {
-            console.log('Loading chat history for tab:', activeTab);
-            const chatContent = document.querySelector(`#${activeTab === 'main' ? 'chat-area' : activeTab} .chat-content`);
-            if (chatContent) {
-                chatContent.scrollTop = chatContent.scrollHeight;
             }
         }
 
