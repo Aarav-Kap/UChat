@@ -5,9 +5,10 @@ const io = require('socket.io')(http);
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const mongoose = require('mongoose');
+require('dotenv').config(); // Load environment variables from .env
 
-// MongoDB Connection
-mongoose.connect('mongodb://localhost:27017/ulischat', {
+// MongoDB Connection using environment variable
+mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 })
@@ -156,7 +157,7 @@ const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 
 const store = new MongoDBStore({
-    uri: 'mongodb://localhost:27017/ulischat',
+    uri: process.env.MONGODB_URI, // Use environment variable for session store
     collection: 'sessions'
 });
 
