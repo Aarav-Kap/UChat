@@ -42,7 +42,7 @@ const sessionMiddleware = session({
     cookie: { 
         maxAge: 2592000000, // 30 days
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Use true in production
+        secure: false, // Set to false for local testing
         sameSite: 'lax'
     }
 });
@@ -59,27 +59,29 @@ app.get('/', (req, res) => {
 });
 
 app.post('/login', (req, res) => {
-    console.log('POST /login - Login attempt, body:', req.body, 'session before:', req.session);
+    console.log('POST /login - Login attempt, body:', req.body, 'session ID:', req.sessionID, 'session before:', req.session);
     const { username, password } = req.body;
     if (!username || username.length < 3 || !password) {
         console.log('POST /login - Invalid username or password');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
-    // Regenerate session to ensure a new ID and save
-    req.session.regenerate(err => {
+
+    req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
+    console.log('POST /login - Setting session.user:', req.session.user, 'session ID:', req.sessionID);
+
+    req.session.save(err => {
         if (err) {
-            console.error('POST /login - Error regenerating session:', err);
-            return res.status(500).json({ error: 'Failed to regenerate session' });
+            console.error('POST /login - Error saving session:', err);
+            return res.status(500).json({ error: 'Failed to save session' });
         }
-        req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
-        console.log('POST /login - Setting session.user:', req.session.user, 'session ID:', req.sessionID);
-        
-        req.session.save(err => {
+        console.log('POST /login - Session saved successfully, session:', req.session);
+        // Verify the session was saved to the store
+        store.get(req.sessionID, (err, sessionData) => {
             if (err) {
-                console.error('POST /login - Error saving session:', err);
-                return res.status(500).json({ error: 'Failed to save session' });
+                console.error('POST /login - Error retrieving session from store:', err);
+                return res.status(500).json({ error: 'Failed to verify session' });
             }
-            console.log('POST /login - Session saved successfully, session:', req.session);
+            console.log('POST /login - Session data in store:', sessionData);
             res.json({ success: true });
         });
     });
@@ -90,6 +92,11 @@ app.get('/user', (req, res) => {
     try {
         if (!req.session || !req.session.user) {
             console.log('GET /user - No session or user data found, redirecting to login');
+            // Check the store directly to debug
+            store.get(req.sessionID, (err, sessionData) => {
+                if (err) console.error('GET /user - Error retrieving session from store:', err);
+                console.log('GET /user - Session data in store:', sessionData);
+            });
             return res.status(401).json({ error: 'Not logged in' });
         }
         const { username, color, language } = req.session.user;
