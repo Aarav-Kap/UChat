@@ -1,16 +1,17 @@
+require('dotenv').config();
+
 const express = require('express');
 const app = express();
 const http = require('http').Server(app);
 const io = require('socket.io')(http);
 const cookieParser = require('cookie-parser');
 const path = require('path');
-const mongoose = require('mongoose'); // Assuming MongoDB is used
+const mongoose = require('mongoose');
+const session = require('express-session');
+const MongoDBStore = require('connect-mongodb-session')(session);
 
-// MongoDB Connection (adjust URI as needed)
-mongoose.connect('mongodb://localhost:27017/ulischat', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
@@ -30,7 +31,6 @@ app.post('/login', (req, res) => {
         console.log('POST /login - Invalid username or password');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
-    // Save session (assuming MongoDB or in-memory session)
     req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
     console.log(`POST /login - Success for username: ${username}`);
     res.json({ success: true });
@@ -90,7 +90,7 @@ app.get('/logout', (req, res) => {
     console.log('GET /logout - Logging out');
     req.session.destroy(err => {
         if (err) console.error('GET /logout - Error destroying session:', err);
-        res.clearCookie('connect.sid'); // Adjust cookie name based on your session store
+        res.clearCookie('connect.sid');
         console.log('GET /logout - Session destroyed');
         res.redirect('/');
     });
@@ -151,11 +151,8 @@ io.on('connection', socket => {
     io.emit('user list', Array.from(connectedUsers.values()));
 });
 
-const session = require('express-session');
-const MongoDBStore = require('connect-mongodb-session')(session);
-
 const store = new MongoDBStore({
-    uri: 'mongodb://localhost:27017/ulischat',
+    uri: process.env.MONGODB_URI,
     collection: 'sessions'
 });
 
@@ -164,7 +161,7 @@ store.on('error', err => {
 });
 
 app.use(session({
-    secret: 'your-secret-key', // Replace with a secure secret
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     store: store,
