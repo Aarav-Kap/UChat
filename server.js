@@ -15,9 +15,11 @@ const path = require('path');
 
 // Connect to MongoDB
 const mongoURI = process.env.MONGODB_URI || 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
-mongoose.connect(mongoURI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+mongoose.connect(mongoURI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}).then(() => console.log('Connected to MongoDB'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // Define User Schema
 const userSchema = new mongoose.Schema({
@@ -32,8 +34,10 @@ const User = mongoose.model('User', userSchema);
 const store = new MongoDBStore({
     uri: mongoURI,
     collection: 'sessions',
+    ttl: 30 * 24 * 60 * 60 // 30 days
 });
 store.on('error', err => console.error('Session store error:', err));
+store.on('connected', () => console.log('Session store connected to MongoDB'));
 
 // Session middleware
 const sessionMiddleware = session({
@@ -43,14 +47,14 @@ const sessionMiddleware = session({
     store: store,
     cookie: { 
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production', // True on Render (HTTPS)
+        sameSite: 'lax', // Allow redirects
         httpOnly: true,
+        path: '/' // Ensure cookie is available on all routes
     },
 });
 
 app.use(express.static(path.join(__dirname)));
-app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // For form submissions
 app.use(sessionMiddleware);
 
@@ -61,17 +65,17 @@ io.use((socket, next) => {
 
 // Routes
 app.get('/', (req, res) => {
-    console.log('GET / - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
+    console.log('GET / - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie);
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.get('/register', (req, res) => {
-    console.log('GET /register - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
+    console.log('GET /register - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie);
     res.sendFile(path.join(__dirname, 'register.html'));
 });
 
 app.get('/chat', (req, res) => {
-    console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
+    console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie);
     if (!req.session.userId) {
         console.log('No userId in session, redirecting to /');
         return res.redirect('/');
@@ -82,7 +86,7 @@ app.get('/chat', (req, res) => {
 // Login endpoint
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    console.log('POST /login - Username:', username, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie);
+    console.log('POST /login - Username:', username, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie);
     if (!username || username.length < 3 || !password || password.length < 3) {
         console.log('Validation failed: Username or password too short');
         return res.status(400).send(`
@@ -170,7 +174,7 @@ app.post('/login', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).send('Session save failed');
             }
-            console.log('Login successful for user:', username, 'User ID:', req.session.userId);
+            console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
             res.redirect('/chat');
         });
     } catch (err) {
@@ -243,7 +247,7 @@ app.post('/register', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).send('Session save failed');
             }
-            console.log('Registration successful for user:', username, 'User ID:', req.session.userId);
+            console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
             res.redirect('/chat');
         });
     } catch (err) {
@@ -504,6 +508,7 @@ io.on('connection', async (socket) => {
     });
 });
 
-http.listen(process.env.PORT || 3000, () => {
-    console.log(`Server running on port ${process.env.PORT || 3000}`);
+const PORT = process.env.PORT || 10000; // Match Render's detected port
+http.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
