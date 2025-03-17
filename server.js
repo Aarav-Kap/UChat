@@ -21,27 +21,18 @@ app.use(express.urlencoded({ extended: true })); // For parsing form data
 app.use(cookieParser());
 
 const session = require('express-session');
-// Temporarily use memory store for testing (remove MongoDBStore)
+// Temporarily use memory store for testing
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2',
     resave: false,
     saveUninitialized: false,
-    // Remove MongoDBStore for now
-    // store: new MongoDBStore({
-    //     uri: process.env.MONGODB_URI,
-    //     collection: 'sessions'
-    // }),
+    // Using default MemoryStore (no MongoDBStore for now)
     cookie: { 
         maxAge: 2592000000, // 30 days
         httpOnly: true,
         secure: false, // Temporarily set to false for testing on Render
         sameSite: 'lax' // Compatible with cross-site requests
     }
-});
-
-// Add session store error handling (though using memory store now)
-sessionMiddleware.on('error', err => {
-    console.error('Session middleware error:', err);
 });
 
 app.use(sessionMiddleware);
