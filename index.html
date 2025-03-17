@@ -255,8 +255,9 @@
             const errorDiv = document.getElementById('error-message');
             errorDiv.textContent = message;
             errorDiv.style.display = 'block';
-            if (message.includes('Not logged in')) {
+            if (message.includes('Not logged in') && !window.redirected) {
                 console.log('Redirecting to login due to 401');
+                window.redirected = true; // Prevent multiple redirects
                 setTimeout(() => {
                     window.location.href = '/';
                 }, 2000); // Redirect to login after 2 seconds
@@ -314,7 +315,6 @@
             const chatArea = document.getElementById(tabId === 'main' ? 'chat-area' : tabId);
             if (chatArea) chatArea.classList.add('active');
             activeTab = tabId;
-            // No history loading since messages are not saved
             const chatContent = document.querySelector(`#${tabId === 'main' ? 'chat-area' : tabId} .chat-content`);
             if (chatContent) {
                 chatContent.scrollTop = chatContent.scrollHeight;
@@ -463,8 +463,13 @@
                 method: 'GET', 
                 credentials: 'include' 
             })
-                .then(() => {
-                    window.location.href = '/';
+                .then(res => {
+                    if (res.ok) {
+                        console.log('Logout successful, redirecting to /');
+                        window.location.href = '/';
+                    } else {
+                        throw new Error('Logout failed');
+                    }
                 })
                 .catch(err => {
                     console.error('Logout error:', err);

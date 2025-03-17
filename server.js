@@ -10,7 +10,7 @@ require('dotenv').config(); // Load environment variables from the hosting platf
 // Log the MONGODB_URI to debug
 console.log('MONGODB_URI:', process.env.MONGODB_URI);
 
-// MongoDB Connection (still needed for session store)
+// MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
@@ -45,7 +45,8 @@ const sessionMiddleware = session({
         maxAge: 2592000000, // 30 days
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production', // Secure in production (HTTPS)
-        sameSite: 'lax' // Ensure cookies are sent in cross-site requests
+        sameSite: 'lax', // Compatible with cross-site requests
+        domain: undefined // Let the browser handle the domain
     }
 });
 
@@ -158,12 +159,20 @@ app.post('/update-language', (req, res) => {
 
 app.get('/logout', (req, res) => {
     console.log('GET /logout - Logging out, session:', req.session);
-    req.session.destroy(err => {
-        if (err) console.error('GET /logout - Error destroying session:', err);
-        res.clearCookie('connect.sid');
-        console.log('GET /logout - Session destroyed');
+    if (req.session) {
+        req.session.destroy(err => {
+            if (err) {
+                console.error('GET /logout - Error destroying session:', err);
+                return res.status(500).send('Error logging out');
+            }
+            res.clearCookie('connect.sid');
+            console.log('GET /logout - Session destroyed, redirecting to /');
+            res.redirect('/');
+        });
+    } else {
+        console.log('GET /logout - No session found, redirecting to /');
         res.redirect('/');
-    });
+    }
 });
 
 const connectedUsers = new Map();
