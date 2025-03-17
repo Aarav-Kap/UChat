@@ -5,19 +5,47 @@ const io = require('socket.io')(http);
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const mongoose = require('mongoose');
-require('dotenv').config(); // Load environment variables from .env
+require('dotenv').config(); // Load environment variables from the hosting platform
+
+// Log the MONGODB_URI to debug
+console.log('MONGODB_URI:', process.env.MONGODB_URI);
 
 // MongoDB Connection using environment variable
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
 app.use(express.static(path.join(__dirname)));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // For parsing form data
 app.use(cookieParser());
+
+const session = require('express-session');
+const MongoDBStore = require('connect-mongodb-session')(session);
+
+const store = new MongoDBStore({
+    uri: process.env.MONGODB_URI,
+    collection: 'sessions'
+});
+
+store.on('error', err => {
+    console.error('Session store error:', err);
+});
+
+const sessionMiddleware = session({
+    secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2', // Use environment variable or fallback
+    resave: false,
+    saveUninitialized: false,
+    store: store,
+    cookie: { maxAge: 2592000000 } // 30 days
+});
+
+app.use(sessionMiddleware);
+
+// Share session with Socket.IO
+io.use((socket, next) => {
+    sessionMiddleware(socket.request, {}, next);
+});
 
 app.get('/', (req, res) => {
     console.log('GET / - Serving login page');
@@ -32,7 +60,7 @@ app.post('/login', (req, res) => {
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
-    console.log(`POST /login - Success for username: ${username}`);
+    console.log(`POST /login - Success for username: ${username}, session:`, req.session);
     res.json({ success: true });
 });
 
@@ -100,8 +128,14 @@ const connectedUsers = new Map();
 
 io.on('connection', socket => {
     console.log(`Socket connected: ${socket.id}`);
-    const username = socket.handshake.query.username;
-    const color = socket.handshake.query.color || '#1E90FF';
+    const session = socket.request.session;
+    if (!session || !session.user) {
+        console.log('Socket connection - No session found, disconnecting');
+        socket.disconnect(true);
+        return;
+    }
+    const username = session.user.username;
+    const color = session.user.color || '#1E90FF';
     connectedUsers.set(socket.id, { id: socket.id, username, color });
 
     io.emit('user count', connectedUsers.size);
@@ -117,7 +151,7 @@ io.on('connection', socket => {
         console.log(`Sending DM from ${socket.id} to ${msg.recipientId}: ${JSON.stringify(msg)}`);
         socket.emit('dm message', { ...msg, senderId: socket.id });
         if (recipientSocket) {
-            recipientSocket.emit('dm message', { ...msg, senderId: socket.id });
+            io.to(recipientSocket.id).emit('dm message', { ...msg, senderId: socket.id });
         }
     });
 
@@ -152,26 +186,6 @@ io.on('connection', socket => {
         io.emit('user list', Array.from(connectedUsers.values()));
     });
 });
-
-const session = require('express-session');
-const MongoDBStore = require('connect-mongodb-session')(session);
-
-const store = new MongoDBStore({
-    uri: process.env.MONGODB_URI, // Use environment variable for session store
-    collection: 'sessions'
-});
-
-store.on('error', err => {
-    console.error('Session store error:', err);
-});
-
-app.use(session({
-    secret: 'your-secret-key',
-    resave: false,
-    saveUninitialized: false,
-    store: store,
-    cookie: { maxAge: 2592000000 } // 30 days
-}));
 
 http.listen(process.env.PORT || 3000, () => {
     console.log(`Server running on port ${process.env.PORT || 3000}`);
