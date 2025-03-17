@@ -41,7 +41,7 @@ store.on('error', err => {
 
 // Wait for store to be ready
 function ensureStoreReady() {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         if (store.ready) {
             console.log('Session store is ready');
             resolve();
@@ -52,8 +52,18 @@ function ensureStoreReady() {
                     console.log('Session store is now ready');
                     clearInterval(checkInterval);
                     resolve();
+                } else if (store._readyState === 'disconnected') {
+                    clearInterval(checkInterval);
+                    reject(new Error('Session store disconnected'));
                 }
             }, 1000);
+            setTimeout(() => {
+                clearInterval(checkInterval);
+                if (!store.ready) {
+                    console.error('Session store failed to become ready after 10 seconds');
+                    reject(new Error('Session store timeout'));
+                }
+            }, 10000); // 10-second timeout
         }
     });
 }
@@ -69,12 +79,13 @@ app.use(async (req, res, next) => {
         console.error('MongoDB not connected');
         return res.status(503).json({ error: 'Database unavailable' });
     }
-    await ensureStoreReady();
-    if (!store.ready) {
-        console.warn('Session store not ready after waiting, proceeding with fallback');
-        req.session = req.session || {};
+    try {
+        await ensureStoreReady();
+        next();
+    } catch (err) {
+        console.error('Session store initialization failed:', err.message);
+        return res.status(500).json({ error: 'Session service unavailable' });
     }
-    next();
 });
 
 app.use(session({
@@ -126,7 +137,7 @@ app.post('/login', async (req, res) => {
                 console.error('Session save error:', err.message);
                 return res.status(500).json({ error: 'Failed to save session' });
             }
-            console.log(`POST /login - Success for username: ${username}`);
+            console.log(`POST /login - Success for username: ${username}, session saved`);
             res.json({ success: true });
         });
     } catch (err) {
@@ -137,7 +148,7 @@ app.post('/login', async (req, res) => {
 
 // User data route
 app.get('/user', (req, res) => {
-    console.log('GET /user - Fetching user data', req.session);
+    console.log('GET /user - Fetching user data, session:', req.session);
     try {
         if (!req.session || !req.session.user) {
             console.log('GET /user - No session or user data found, redirecting to login');
@@ -211,7 +222,7 @@ app.post('/update-language', (req, res) => {
 
 // Logout route
 app.get('/logout', (req, res) => {
-    console.log('GET /logout - Logging out');
+    console.log('GET /logout - Logging out, session:', req.session);
     if (req.session) {
         req.session.destroy(err => {
             if (err) {
@@ -219,12 +230,12 @@ app.get('/logout', (req, res) => {
                 return res.status(500).json({ error: 'Failed to logout' });
             }
             res.clearCookie('connect.sid');
-            console.log('GET /logout - Session destroyed');
-            res.redirect('/');
+            console.log('GET /logout - Session destroyed, redirecting to /');
+            res.redirect('/?nocache=' + Date.now());
         });
     } else {
         console.warn('GET /logout - No session to destroy');
-        res.redirect('/');
+        res.redirect('/?nocache=' + Date.now());
     }
 });
 
@@ -239,9 +250,7 @@ io.on('connection', socket => {
 
     socket.on('dm message', msg => {
         console.log(`Sending DM from ${socket.id} to ${msg.recipientId}: ${JSON.stringify(msg)}`);
-        // Emit to the sender
         io.to(socket.id).emit('dm message', { ...msg, senderId: socket.id });
-        // Emit to the recipient using io.to()
         if (msg.recipientId && msg.recipientId !== socket.id) {
             io.to(msg.recipientId).emit('dm message', { ...msg, senderId: socket.id });
         }
@@ -278,7 +287,7 @@ io.on('connection', socket => {
         io.emit('user list', Array.from(connectedUsers.values()));
     });
 
-    const user = { id: socket.id, username: socket.handshake.query.username, color: socket.handshake.query.color };
+    const user = { id: socket.id, username: socket.handshake.query.username || 'Anonymous', color: socket.handshake.query.color || '#1E90FF' };
     connectedUsers.set(socket.id, user);
     io.emit('user count', connectedUsers.size);
     io.emit('user list', Array.from(connectedUsers.values()));
