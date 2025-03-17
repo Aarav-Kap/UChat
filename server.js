@@ -9,7 +9,7 @@ const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 
 // Hardcoded MongoDB URI and Session Secret
-const MONGODB_URI = 'mongodb+srv://admin:Aarav123@cluster0.0g3yi.mongodb.net/ulischat?retryWrites=true&w=majority&appName=Cluster0';
+const MONGODB_URI = 'mongodb+srv://newadmin:NewPass123!@ulischatcluster.9fkuw.mongodb.net/ulischat?retryWrites=true&w=majority&appName=UlisChatCluster';
 const SESSION_SECRET = 'UlisChat_Secret_2025!@#xK9pLmQ2';
 
 // MongoDB Connection
@@ -124,7 +124,7 @@ app.post('/login', async (req, res) => {
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err.message);
-                return res.status(500).json({ error: "Failed to save session" });
+                return res.status(500).json({ error: 'Failed to save session' });
             }
             console.log(`POST /login - Success for username: ${username}`);
             res.json({ success: true });
