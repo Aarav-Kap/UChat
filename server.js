@@ -43,7 +43,7 @@ const sessionMiddleware = session({
     store: store,
     cookie: { 
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production', // True on Render
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
     },
 });
@@ -59,11 +59,14 @@ io.use((socket, next) => {
 
 // Routes
 app.get('/', (req, res) => {
+    console.log('GET / - Session ID:', req.sessionID, 'User ID:', req.session.userId);
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.get('/chat', (req, res) => {
+    console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session.userId);
     if (!req.session.userId) {
+        console.log('No userId in session, redirecting to /');
         return res.redirect('/');
     }
     res.sendFile(path.join(__dirname, 'chat.html'));
@@ -72,16 +75,20 @@ app.get('/chat', (req, res) => {
 // Login endpoint
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
+    console.log('POST /login - Username:', username, 'Session ID:', req.sessionID);
     if (!username || username.length < 3 || !password || password.length < 3) {
+        console.log('Validation failed: Username or password too short');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     try {
         const user = await User.findOne({ username });
         if (!user) {
+            console.log('User not found:', username);
             return res.status(400).json({ error: 'Invalid username or password' });
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
+            console.log('Password mismatch for user:', username);
             return res.status(400).json({ error: 'Invalid username or password' });
         }
         req.session.userId = user._id.toString();
@@ -90,7 +97,8 @@ app.post('/login', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Session save failed' });
             }
-            res.redirect('/chat'); // Redirect to chat page
+            console.log('Login successful for user:', username, 'User ID:', req.session.userId);
+            res.redirect('/chat');
         });
     } catch (err) {
         console.error('Login error:', err);
@@ -222,7 +230,6 @@ io.on('connection', async (socket) => {
     }
     const { username, color } = user;
 
-    // Update or add user to connectedUsers on connection
     const existingSocket = Array.from(connectedUsers.entries()).find(([_, u]) => u.userId === user._id.toString());
     if (existingSocket) {
         connectedUsers.delete(existingSocket[0]);

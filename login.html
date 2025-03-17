@@ -23,18 +23,32 @@
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const response = await fetch('/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            if (response.redirected) {
-                window.location.href = response.url; // Follow the redirect
-            } else {
-                const data = await response.json();
-                if (data.error) {
-                    document.getElementById('error').textContent = data.error;
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include', // Ensure cookies are sent
+                    redirect: 'manual' // Prevent fetch from following redirects
+                });
+                console.log('Login response status:', response.status);
+                console.log('Login response headers:', response.headers.get('Location'));
+                if (response.status === 302 || response.redirected) {
+                    const redirectUrl = response.headers.get('Location') || '/chat';
+                    console.log('Redirecting to:', redirectUrl);
+                    window.location.href = redirectUrl;
+                } else {
+                    const data = await response.json();
+                    if (data.error) {
+                        document.getElementById('error').textContent = data.error;
+                    } else {
+                        console.log('Unexpected response:', data);
+                        document.getElementById('error').textContent = 'Unexpected response from server';
+                    }
                 }
+            } catch (err) {
+                console.error('Login error:', err);
+                document.getElementById('error').textContent = 'Login failed: ' + err.message;
             }
         });
     </script>
