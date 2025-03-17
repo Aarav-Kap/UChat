@@ -29,9 +29,9 @@ const sessionMiddleware = session({
     store: store,
     cookie: { 
         maxAge: 2592000000, // 30 days
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production', // True on Render (HTTPS)
         httpOnly: true,
-        sameSite: 'lax', // Add this to help with cookie issues
+        sameSite: 'lax',
     },
 });
 
@@ -46,11 +46,12 @@ io.use((socket, next) => {
 });
 
 app.get('/', (req, res) => {
-    console.log('GET / - Serving login page');
+    console.log('GET / - Serving login page, Session:', req.session);
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.get('/index.html', (req, res) => {
+    console.log('GET /index.html - Session check:', req.session);
     if (!req.session || !req.session.user) {
         console.log('GET /index.html - No session, redirecting to /');
         return res.redirect('/');
@@ -66,10 +67,10 @@ app.get('/session-check', (req, res) => {
 });
 
 app.post('/login', (req, res) => {
-    console.log('POST /login - Login attempt', req.body);
+    console.log('POST /login - Login attempt, Body:', req.body, 'Session:', req.session);
     const { username, password } = req.body;
-    if (!username || username.length < 3 || !password) {
-        console.log('POST /login - Invalid username or password');
+    if (!username || username.length < 3 || !password || password.length < 3) {
+        console.log('POST /login - Invalid credentials');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     req.session.user = { username, color: '#1E90FF', language: 'en' };
@@ -78,16 +79,16 @@ app.post('/login', (req, res) => {
             console.error('POST /login - Session save error:', err);
             return res.status(500).json({ error: 'Session save failed' });
         }
-        console.log(`POST /login - Success for username: ${username}, session:`, req.session);
+        console.log('POST /login - Success, Session saved:', req.session);
         res.json({ success: true });
     });
 });
 
 app.post('/register', (req, res) => {
-    console.log('POST /register - Register attempt', req.body);
+    console.log('POST /register - Register attempt, Body:', req.body, 'Session:', req.session);
     const { username, password } = req.body;
-    if (!username || username.length < 3 || !password) {
-        console.log('POST /register - Invalid username or password');
+    if (!username || username.length < 3 || !password || password.length < 3) {
+        console.log('POST /register - Invalid credentials');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     req.session.user = { username, color: '#1E90FF', language: 'en' };
@@ -96,24 +97,24 @@ app.post('/register', (req, res) => {
             console.error('POST /register - Session save error:', err);
             return res.status(500).json({ error: 'Session save failed' });
         }
-        console.log(`POST /register - Success for username: ${username}, session:`, req.session);
+        console.log('POST /register - Success, Session saved:', req.session);
         res.json({ success: true });
     });
 });
 
 app.get('/user', (req, res) => {
-    console.log('GET /user - Fetching user data', req.session);
+    console.log('GET /user - Fetching user data, Session:', req.session);
     if (!req.session || !req.session.user) {
         console.log('GET /user - No session or user data found, redirecting to login');
         return res.status(401).json({ error: 'Not logged in' });
     }
     const { username, color, language } = req.session.user;
-    console.log(`GET /user - Success: username=${username}, color=${color}, language=${language}`);
+    console.log('GET /user - Success:', { username, color, language });
     res.json({ username, color, language });
 });
 
 app.post('/change-username', (req, res) => {
-    console.log('POST /change-username - Attempting to change username');
+    console.log('POST /change-username - Attempting to change username, Body:', req.body);
     const { newUsername } = req.body;
     if (!newUsername || newUsername.length < 3) {
         console.log('POST /change-username - Invalid new username');
@@ -123,34 +124,34 @@ app.post('/change-username', (req, res) => {
         req.session.user.username = newUsername;
         req.session.save();
     }
-    console.log(`POST /change-username - Success: newUsername=${newUsername}`);
+    console.log('POST /change-username - Success:', newUsername);
     res.json({ success: true });
 });
 
 app.post('/change-color', (req, res) => {
-    console.log('POST /change-color - Changing color');
+    console.log('POST /change-color - Changing color, Body:', req.body);
     const { color } = req.body;
     if (req.session && req.session.user) {
         req.session.user.color = color;
         req.session.save();
     }
-    console.log(`POST /change-color - Success: color=${color}`);
+    console.log('POST /change-color - Success:', color);
     res.json({ success: true });
 });
 
 app.post('/update-language', (req, res) => {
-    console.log('POST /update-language - Updating language');
+    console.log('POST /update-language - Updating language, Body:', req.body);
     const { language } = req.body;
     if (req.session && req.session.user) {
         req.session.user.language = language;
         req.session.save();
     }
-    console.log(`POST /update-language - Success: language=${language}`);
+    console.log('POST /update-language - Success:', language);
     res.json({ success: true });
 });
 
 app.get('/logout', (req, res) => {
-    console.log('GET /logout - Logging out');
+    console.log('GET /logout - Logging out, Session:', req.session);
     req.session.destroy(err => {
         if (err) console.error('GET /logout - Error destroying session:', err);
         res.clearCookie('connect.sid');
