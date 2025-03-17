@@ -10,10 +10,7 @@ const MongoDBStore = require('connect-mongodb-session')(session);
 
 // MongoDB Connection
 const mongoURI = 'mongodb+srv://newadmin:NewPass123!@ulischatcluster.9fkuw.mongodb.net/ulischat?retryWrites=true&w=majority&appName=UlisChatCluster';
-mongoose.connect(mongoURI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
+mongoose.connect(mongoURI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
