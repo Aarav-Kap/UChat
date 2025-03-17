@@ -43,14 +43,15 @@ const sessionMiddleware = session({
     store: store,
     cookie: { 
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production', // True on Render
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        httpOnly: true, // Prevent client-side script access
+        httpOnly: true,
     },
 });
 
 app.use(express.static(path.join(__dirname)));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // For form submissions
 app.use(sessionMiddleware);
 
 // Apply session middleware to Socket.IO
@@ -84,31 +85,97 @@ app.post('/login', async (req, res) => {
     console.log('POST /login - Username:', username, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie);
     if (!username || username.length < 3 || !password || password.length < 3) {
         console.log('Validation failed: Username or password too short');
-        return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
+        return res.status(400).send(`
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Login</title>
+                <link rel="stylesheet" href="style.css">
+            </head>
+            <body>
+                <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
+                    <h2>Login</h2>
+                    <form id="login-form" action="/login" method="POST">
+                        <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
+                        <input type="password" name="password" id="password" placeholder="Password" required><br>
+                        <button type="submit">Login</button>
+                    </form>
+                    <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
+                    <p>Don't have an account? <a href="/register">Register</a></p>
+                </div>
+            </body>
+            </html>
+        `);
     }
     try {
         const user = await User.findOne({ username });
         if (!user) {
             console.log('User not found:', username);
-            return res.status(400).json({ error: 'Invalid username or password' });
+            return res.status(400).send(`
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Login</title>
+                    <link rel="stylesheet" href="style.css">
+                </head>
+                <body>
+                    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
+                        <h2>Login</h2>
+                        <form id="login-form" action="/login" method="POST">
+                            <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
+                            <input type="password" name="password" id="password" placeholder="Password" required><br>
+                            <button type="submit">Login</button>
+                        </form>
+                        <p id="error" style="color: red;">Invalid username or password</p>
+                        <p>Don't have an account? <a href="/register">Register</a></p>
+                    </div>
+                </body>
+                </html>
+            `);
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             console.log('Password mismatch for user:', username);
-            return res.status(400).json({ error: 'Invalid username or password' });
+            return res.status(400).send(`
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Login</title>
+                    <link rel="stylesheet" href="style.css">
+                </head>
+                <body>
+                    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
+                        <h2>Login</h2>
+                        <form id="login-form" action="/login" method="POST">
+                            <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
+                            <input type="password" name="password" id="password" placeholder="Password" required><br>
+                            <button type="submit">Login</button>
+                        </form>
+                        <p id="error" style="color: red;">Invalid username or password</p>
+                        <p>Don't have an account? <a href="/register">Register</a></p>
+                    </div>
+                </body>
+                </html>
+            `);
         }
         req.session.userId = user._id.toString();
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err);
-                return res.status(500).json({ error: 'Session save failed' });
+                return res.status(500).send('Session save failed');
             }
-            console.log('Login successful for user:', username, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
+            console.log('Login successful for user:', username, 'User ID:', req.session.userId);
             res.redirect('/chat');
         });
     } catch (err) {
         console.error('Login error:', err);
-        res.status(500).json({ error: 'Server error' });
+        res.status(500).send('Server error');
     }
 });
 
@@ -116,12 +183,56 @@ app.post('/login', async (req, res) => {
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
     if (!username || username.length < 3 || !password || password.length < 3) {
-        return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
+        return res.status(400).send(`
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Register</title>
+                <link rel="stylesheet" href="style.css">
+            </head>
+            <body>
+                <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
+                    <h2>Register</h2>
+                    <form id="register-form" action="/register" method="POST">
+                        <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
+                        <input type="password" name="password" id="password" placeholder="Password" required><br>
+                        <button type="submit">Register</button>
+                    </form>
+                    <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
+                    <p>Already have an account? <a href="/">Login</a></p>
+                </div>
+            </body>
+            </html>
+        `);
     }
     try {
         const existingUser = await User.findOne({ username });
         if (existingUser) {
-            return res.status(400).json({ error: 'Username already exists' });
+            return res.status(400).send(`
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Register</title>
+                    <link rel="stylesheet" href="style.css">
+                </head>
+                <body>
+                    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
+                        <h2>Register</h2>
+                        <form id="register-form" action="/register" method="POST">
+                            <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
+                            <input type="password" name="password" id="password" placeholder="Password" required><br>
+                            <button type="submit">Register</button>
+                        </form>
+                        <p id="error" style="color: red;">Username already exists</p>
+                        <p>Already have an account? <a href="/">Login</a></p>
+                    </div>
+                </body>
+                </html>
+            `);
         }
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new User({ username, password: hashedPassword });
@@ -130,14 +241,14 @@ app.post('/register', async (req, res) => {
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err);
-                return res.status(500).json({ error: 'Session save failed' });
+                return res.status(500).send('Session save failed');
             }
-            console.log('Registration successful for user:', username, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
+            console.log('Registration successful for user:', username, 'User ID:', req.session.userId);
             res.redirect('/chat');
         });
     } catch (err) {
         console.error('Register error:', err);
-        res.status(500).json({ error: 'Server error' });
+        res.status(500).send('Server error');
     }
 });
 
