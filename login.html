@@ -78,7 +78,7 @@
             document.querySelector('.register-link').style.display = 'block';
             document.getElementById('register-form').style.display = 'none';
         }
-
+    
         document.getElementById('login-form').addEventListener('submit', e => {
             e.preventDefault();
             const username = document.querySelector('#login-form input[name="username"]').value;
@@ -87,19 +87,26 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password }),
-                credentials: 'include'
+                credentials: 'include' // Ensure cookies are sent
             })
-            .then(res => res.json())
+            .then(res => {
+                console.log('Login response status:', res.status);
+                return res.json();
+            })
             .then(data => {
+                console.log('Login response data:', data);
                 if (data.success) {
                     window.location.href = '/index.html';
                 } else {
                     alert(data.error || 'Login failed');
                 }
             })
-            .catch(err => alert('Login error: ' + err));
+            .catch(err => {
+                console.error('Login fetch error:', err);
+                alert('Login error: ' + err);
+            });
         });
-
+    
         document.getElementById('register-form-inner').addEventListener('submit', e => {
             e.preventDefault();
             const username = document.querySelector('#register-form-inner input[name="username"]').value;
@@ -108,17 +115,24 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password }),
-                credentials: 'include'
+                credentials: 'include' // Ensure cookies are sent
             })
-            .then(res => res.json())
+            .then(res => {
+                console.log('Register response status:', res.status);
+                return res.json();
+            })
             .then(data => {
+                console.log('Register response data:', data);
                 if (data.success) {
                     window.location.href = '/index.html';
                 } else {
                     alert(data.error || 'Registration failed');
                 }
             })
-            .catch(err => alert('Registration error: ' + err));
+            .catch(err => {
+                console.error('Register fetch error:', err);
+                alert('Registration error: ' + err);
+            });
         });
     </script>
 <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'921f2cca5b4fc9b8',t:'MTc0MjI0MjY1OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
