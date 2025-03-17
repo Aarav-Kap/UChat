@@ -43,8 +43,9 @@ const sessionMiddleware = session({
     store: store,
     cookie: { 
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production', // True on Render
         sameSite: 'lax',
+        httpOnly: true, // Prevent client-side script access
     },
 });
 
@@ -59,17 +60,17 @@ io.use((socket, next) => {
 
 // Routes
 app.get('/', (req, res) => {
-    console.log('GET / - Session ID:', req.sessionID, 'User ID:', req.session.userId);
+    console.log('GET / - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.get('/register', (req, res) => {
-    console.log('GET /register - Session ID:', req.sessionID);
+    console.log('GET /register - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
     res.sendFile(path.join(__dirname, 'register.html'));
 });
 
 app.get('/chat', (req, res) => {
-    console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session.userId);
+    console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
     if (!req.session.userId) {
         console.log('No userId in session, redirecting to /');
         return res.redirect('/');
@@ -80,7 +81,7 @@ app.get('/chat', (req, res) => {
 // Login endpoint
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    console.log('POST /login - Username:', username, 'Session ID:', req.sessionID);
+    console.log('POST /login - Username:', username, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie);
     if (!username || username.length < 3 || !password || password.length < 3) {
         console.log('Validation failed: Username or password too short');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
@@ -102,7 +103,7 @@ app.post('/login', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Session save failed' });
             }
-            console.log('Login successful for user:', username, 'User ID:', req.session.userId);
+            console.log('Login successful for user:', username, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
             res.redirect('/chat');
         });
     } catch (err) {
@@ -131,6 +132,7 @@ app.post('/register', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Session save failed' });
             }
+            console.log('Registration successful for user:', username, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie);
             res.redirect('/chat');
         });
     } catch (err) {

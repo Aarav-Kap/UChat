@@ -28,17 +28,25 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password }),
-                    credentials: 'include'
+                    credentials: 'include',
+                    redirect: 'manual'
                 });
-                if (response.redirected) {
-                    window.location.href = response.url;
-                } else {
+                console.log('Register response status:', response.status);
+                console.log('Register response headers:', response.headers.get('Location'));
+                if (response.status === 302 || response.redirected) {
+                    const redirectUrl = response.headers.get('Location') || '/chat';
+                    console.log('Redirecting to:', redirectUrl);
+                    window.location.href = redirectUrl;
+                } else if (response.ok) {
                     const data = await response.json();
                     if (data.error) {
                         document.getElementById('error').textContent = data.error;
                     } else {
                         window.location.href = '/chat';
                     }
+                } else {
+                    const data = await response.json();
+                    document.getElementById('error').textContent = data.error || 'Registration failed';
                 }
             } catch (err) {
                 console.error('Registration error:', err);

@@ -29,7 +29,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password }),
                     credentials: 'include',
-                    redirect: 'manual'
+                    redirect: 'manual' // Prevent automatic redirect following
                 });
                 console.log('Login response status:', response.status);
                 console.log('Login response headers:', response.headers.get('Location'));
@@ -37,14 +37,17 @@
                     const redirectUrl = response.headers.get('Location') || '/chat';
                     console.log('Redirecting to:', redirectUrl);
                     window.location.href = redirectUrl;
-                } else {
+                } else if (response.ok) {
+                    // Handle unexpected non-redirect success (e.g., JSON response)
                     const data = await response.json();
                     if (data.error) {
                         document.getElementById('error').textContent = data.error;
                     } else {
-                        console.log('Unexpected response:', data);
-                        document.getElementById('error').textContent = 'Unexpected response from server';
+                        window.location.href = '/chat';
                     }
+                } else {
+                    const data = await response.json();
+                    document.getElementById('error').textContent = data.error || 'Login failed';
                 }
             } catch (err) {
                 console.error('Login error:', err);
