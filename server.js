@@ -10,7 +10,7 @@ require('dotenv').config(); // Load environment variables from the hosting platf
 // Log the MONGODB_URI to debug
 console.log('MONGODB_URI:', process.env.MONGODB_URI);
 
-// MongoDB Connection
+// MongoDB Connection (for reference, though we'll use memory store for now)
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
@@ -21,33 +21,27 @@ app.use(express.urlencoded({ extended: true })); // For parsing form data
 app.use(cookieParser());
 
 const session = require('express-session');
-const MongoDBStore = require('connect-mongodb-session')(session);
-
-const store = new MongoDBStore({
-    uri: process.env.MONGODB_URI,
-    collection: 'sessions'
-});
-
-store.on('error', err => {
-    console.error('Session store error:', err);
-});
-
-store.on('connected', () => {
-    console.log('Session store connected to MongoDB');
-});
-
+// Temporarily use memory store for testing (remove MongoDBStore)
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2',
     resave: false,
     saveUninitialized: false,
-    store: store,
+    // Remove MongoDBStore for now
+    // store: new MongoDBStore({
+    //     uri: process.env.MONGODB_URI,
+    //     collection: 'sessions'
+    // }),
     cookie: { 
         maxAge: 2592000000, // 30 days
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Secure in production (HTTPS)
-        sameSite: 'lax', // Compatible with cross-site requests
-        domain: undefined // Let the browser handle the domain
+        secure: false, // Temporarily set to false for testing on Render
+        sameSite: 'lax' // Compatible with cross-site requests
     }
+});
+
+// Add session store error handling (though using memory store now)
+sessionMiddleware.on('error', err => {
+    console.error('Session middleware error:', err);
 });
 
 app.use(sessionMiddleware);
