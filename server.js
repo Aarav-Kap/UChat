@@ -1,5 +1,3 @@
-require('dotenv').config();
-
 const express = require('express');
 const app = express();
 const http = require('http').Server(app);
@@ -10,8 +8,12 @@ const mongoose = require('mongoose');
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 
+// Hardcoded MongoDB URI and Session Secret
+const MONGODB_URI = 'mongodb+srv://admin:Aarav123@cluster0.0g3yi.mongodb.net/ulischat?retryWrites=true&w=majority&appName=Cluster0';
+const SESSION_SECRET = 'UlisChat_Secret_2025!@#xK9pLmQ2';
+
 // MongoDB Connection with improved error handling
-mongoose.connect(process.env.MONGODB_URI, {
+mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000 // Timeout after 5 seconds
@@ -30,7 +32,7 @@ const User = mongoose.model('User', userSchema);
 
 // Session Store
 const store = new MongoDBStore({
-    uri: process.env.MONGODB_URI,
+    uri: MONGODB_URI,
     collection: 'sessions',
     ttl: 14 * 24 * 60 * 60 // 14 days session expiration
 });
@@ -59,14 +61,14 @@ app.use((req, res, next) => {
 });
 
 app.use(session({
-    secret: process.env.SESSION_SECRET,
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     store: store,
     cookie: {
         maxAge: 2592000000, // 30 days
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production', // Note: NODE_ENV isn't set, defaults to undefined
         sameSite: 'lax'
     }
 }));
