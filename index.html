@@ -313,14 +313,22 @@
         function initializeUser() {
             fetch('/user', { method: 'GET', credentials: 'include' })
                 .then(res => {
-                    if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                    if (!res.ok) {
+                        if (res.status === 401) {
+                            throw new Error('Not logged in');
+                        }
+                        throw new Error(`HTTP error! Status: ${res.status}`);
+                    }
                     return res.json();
                 })
                 .then(data => {
                     if (data.error) {
                         console.error('User fetch error:', data.error);
                         showError('Not logged in. Redirecting to login...');
-                        setTimeout(() => window.location.href = '/', 1000); // Force redirect to login
+                        // Force redirect with cache-clearing query param to break loop
+                        setTimeout(() => {
+                            window.location.href = '/?nocache=' + Date.now();
+                        }, 1000);
                         return;
                     }
                     username = data.username;
@@ -335,9 +343,11 @@
                     loadHistory();
                 })
                 .catch(err => {
-                    console.error('Fetch /user error:', err);
+                    console.error('Fetch /user error:', err.message);
                     showError('Failed to load user data. Redirecting to login...');
-                    setTimeout(() => window.location.href = '/', 1000); // Force redirect to login
+                    setTimeout(() => {
+                        window.location.href = '/?nocache=' + Date.now();
+                    }, 1000);
                 });
         }
 
@@ -694,7 +704,7 @@
             e.preventDefault();
             fetch('/logout', { credentials: 'include' })
                 .then(() => {
-                    window.location.href = '/';
+                    window.location.href = '/?nocache=' + Date.now();
                 })
                 .catch(err => {
                     console.error('Logout error:', err);
