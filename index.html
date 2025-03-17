@@ -325,7 +325,6 @@
                     if (data.error) {
                         console.error('User fetch error:', data.error);
                         showError('Not logged in. Redirecting to login...');
-                        // Immediate redirect with cache-clearing
                         window.location.href = '/?nocache=' + Date.now();
                         return;
                     }
@@ -343,7 +342,7 @@
                 .catch(err => {
                     console.error('Fetch /user error:', err.message);
                     showError('Failed to load user data. Redirecting to login...');
-                    window.location.href = '/?nocache=' + Date.now(); // Immediate redirect
+                    window.location.href = '/?nocache=' + Date.now();
                 });
         }
 
@@ -362,7 +361,7 @@
             const ul = document.getElementById('user-list');
             ul.innerHTML = users
                 .filter(u => u.username !== username)
-                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')">${u.username}</li>`)
+                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')">${u.username || 'Anonymous'}</li>`)
                 .join('');
         });
 
@@ -410,7 +409,7 @@
 
             const usernameSpan = document.createElement('span');
             usernameSpan.className = 'username';
-            usernameSpan.textContent = msg.username === username ? 'You' : msg.username;
+            usernameSpan.textContent = msg.username === username ? 'You' : (msg.username || 'Anonymous');
             div.appendChild(usernameSpan);
 
             let text = msg.text || '';
@@ -463,7 +462,7 @@
         }
 
         function getRecipientUsername(id) {
-            return connectedUsers[id]?.username || 'Unknown';
+            return connectedUsers[id]?.username || 'Anonymous';
         }
 
         function updateTypingIndicator(username) {

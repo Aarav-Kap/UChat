@@ -90,10 +90,20 @@ app.use(session({
     }
 }));
 
-// Ensure / serves login.html and debug session
+// Serve login page for root
 app.get('/', (req, res) => {
     console.log('GET / - Serving login page, session:', req.session);
     res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+// Serve chat page (index.html) only if logged in
+app.get('/chat', (req, res) => {
+    if (!req.session || !req.session.user) {
+        console.log('GET /chat - No session, redirecting to login');
+        return res.redirect('/?nocache=' + Date.now());
+    }
+    console.log('GET /chat - Serving chat page, session:', req.session);
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Login route
@@ -114,7 +124,7 @@ app.post('/login', async (req, res) => {
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err.message);
-                return res.status(500).json({ error: 'Failed to save session' });
+                return res.status(500).json({ error: "Failed to save session" });
             }
             console.log(`POST /login - Success for username: ${username}`);
             res.json({ success: true });
@@ -228,11 +238,12 @@ io.on('connection', socket => {
     });
 
     socket.on('dm message', msg => {
-        const recipientSocket = connectedUsers.get(msg.recipientId);
         console.log(`Sending DM from ${socket.id} to ${msg.recipientId}: ${JSON.stringify(msg)}`);
-        socket.emit('dm message', { ...msg, senderId: socket.id });
-        if (recipientSocket) {
-            recipientSocket.emit('dm message', { ...msg, senderId: socket.id });
+        // Emit to the sender
+        io.to(socket.id).emit('dm message', { ...msg, senderId: socket.id });
+        // Emit to the recipient using io.to()
+        if (msg.recipientId && msg.recipientId !== socket.id) {
+            io.to(msg.recipientId).emit('dm message', { ...msg, senderId: socket.id });
         }
     });
 

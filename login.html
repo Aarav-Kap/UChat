@@ -8,44 +8,31 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Roboto', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
+            margin: 0;
             background: linear-gradient(135deg, #f5f7fa, #e0e5ec);
-            color: #333;
+            overflow: hidden;
         }
-        #error-message {
-            display: none;
-            color: #e41b1b;
-            font-size: 1em;
-            padding: 10px;
-            text-align: center;
-            background: #ffe6e6;
-            border-bottom: 1px solid #e41b1b;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-        }
-        .login-container {
+        #login-container {
             background: #fff;
             padding: 40px;
             border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
             width: 100%;
             max-width: 400px;
-            text-align: center;
         }
-        .login-container h2 {
+        h2 {
             margin-bottom: 20px;
-            font-size: 1.8em;
             color: #2f2f2f;
+            font-size: 1.8em;
         }
-        .login-container input, .login-container select {
+        input[type="text"], input[type="password"] {
             width: 100%;
             padding: 12px;
             margin: 10px 0;
@@ -55,79 +42,78 @@
             outline: none;
             transition: border-color 0.2s;
         }
-        .login-container input:focus, .login-container select:focus {
+        input[type="text"]:focus, input[type="password"]:focus {
             border-color: #1E90FF;
         }
-        .login-container button {
+        button {
             width: 100%;
             padding: 12px;
             background: #1E90FF;
             color: white;
             border: none;
             border-radius: 6px;
-            font-size: 1em;
             cursor: pointer;
+            font-size: 1em;
             transition: background 0.2s;
         }
-        .login-container button:hover {
+        button:hover {
             background: #45b7aa;
+        }
+        #error-message {
+            color: #e41b1b;
+            font-size: 0.9em;
+            margin-top: 10px;
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div id="error-message"></div>
-    <div class="login-container">
+    <div id="login-container">
         <h2>Login to UlisChat</h2>
-        <input type="text" id="username" placeholder="Username" required>
-        <input type="password" id="password" placeholder="Password" required>
-        <select id="language">
-            <option value="en">English</option>
-            <option value="fr">French</option>
-            <option value="es">Spanish</option>
-            <option value="pt">Portuguese</option>
-            <option value="ru">Russian</option>
-            <option value="hi">Hindi</option>
-        </select>
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
         <button onclick="login()">Login</button>
+        <div id="error-message"></div>
     </div>
 
     <script>
-        function showError(message) {
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            setTimeout(() => errorDiv.style.display = 'none', 5000);
-        }
-
         function login() {
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const language = document.getElementById('language').value;
+            const errorDiv = document.getElementById('error-message');
+
+            if (!username || username.length < 3 || !password) {
+                errorDiv.textContent = 'Username and password must be at least 3 characters long';
+                errorDiv.style.display = 'block';
+                setTimeout(() => errorDiv.style.display = 'none', 3000);
+                return;
+            }
 
             fetch('/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, language }),
+                body: JSON.stringify({ username, password }),
                 credentials: 'include'
             })
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        window.location.href = '/?nocache=' + Date.now();
+                        window.location.href = '/chat?nocache=' + Date.now();
                     } else {
-                        showError(data.error || 'Login failed');
+                        errorDiv.textContent = data.error || 'Login failed';
+                        errorDiv.style.display = 'block';
+                        setTimeout(() => errorDiv.style.display = 'none', 3000);
                     }
                 })
                 .catch(err => {
                     console.error('Login error:', err);
-                    showError('An error occurred during login');
+                    errorDiv.textContent = 'Error logging in';
+                    errorDiv.style.display = 'block';
+                    setTimeout(() => errorDiv.style.display = 'none', 3000);
                 });
         }
 
-        document.getElementById('username').addEventListener('keypress', e => {
-            if (e.key === 'Enter') login();
-        });
-        document.getElementById('password').addEventListener('keypress', e => {
+        document.getElementById('password').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') login();
         });
     </script>
