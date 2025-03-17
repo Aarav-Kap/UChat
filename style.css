@@ -1,4 +1,3 @@
-/* Reset default styles */
 * {
     margin: 0;
     padding: 0;
@@ -157,21 +156,21 @@ body {
 }
 
 .reply-context {
-    background: #e0e0e0; /* Slightly darker background for contrast */
+    background: #e0e0e0;
     padding: 5px;
     border-radius: 5px;
     margin-bottom: 5px;
     font-size: 0.9em;
-    color: #333; /* Dark gray text for better readability */
+    color: #333;
 }
 
 .reply-username {
     font-weight: bold;
-    color: #555; /* Slightly darker for the username */
+    color: #555;
 }
 
 .reply-text {
-    color: #333; /* Ensure the replied text is also dark */
+    color: #333;
 }
 
 #typing-indicator {
@@ -227,7 +226,6 @@ body {
     z-index: 1000;
 }
 
-/* Call Modal and Interface */
 #call-modal {
     position: fixed;
     top: 50%;
@@ -280,7 +278,6 @@ body {
     background-color: #c0392b;
 }
 
-/* Responsive Design */
 @media (max-width: 600px) {
     #sidebar {
         width: 150px;
@@ -295,4 +292,28 @@ body {
         width: 100%;
         margin-top: 5px;
     }
+}
+
+/* Login page styles */
+form input {
+    display: block;
+    width: 100%;
+    margin: 10px 0;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+form button {
+    width: 100%;
+    padding: 5px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+form button:hover {
+    background-color: #2980b9;
 }

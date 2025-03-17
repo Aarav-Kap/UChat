@@ -3,97 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UlisChat - Login</title>
-    <link rel="stylesheet" href="/styles.css">
+    <title>Login</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h2>UlisChat</h2>
-        <div id="error-message" style="display: none; color: red;"></div>
+    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
+        <h2>Login</h2>
         <form id="login-form">
-            <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
+            <input type="text" id="username" placeholder="Username" required><br>
+            <input type="password" id="password" placeholder="Password" required><br>
             <button type="submit">Login</button>
-            <p><a href="#" onclick="showRegister()">Need an account? Register</a></p>
         </form>
-        <form id="register-form" style="display: none;">
-            <div class="form-group">
-                <label for="reg-username">Username:</label>
-                <input type="text" id="reg-username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="reg-password">Password:</label>
-                <input type="password" id="reg-password" name="password" required>
-            </div>
-            <button type="submit">Register</button>
-            <p><a href="#" onclick="showLogin()">Back to Login</a></p>
-        </form>
+        <p id="error" style="color: red;"></p>
+        <p>Don't have an account? <a href="/register">Register</a></p>
     </div>
 
     <script>
-        function showError(message) {
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            setTimeout(() => errorDiv.style.display = 'none', 3000);
-        }
-
-        function showRegister() {
-            document.getElementById('login-form').style.display = 'none';
-            document.getElementById('register-form').style.display = 'block';
-        }
-
-        function showLogin() {
-            document.getElementById('login-form').style.display = 'block';
-            document.getElementById('register-form').style.display = 'none';
-        }
-
-        document.getElementById('login-form').addEventListener('submit', e => {
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            fetch('/login', {
+            const response = await fetch('/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
-                credentials: 'include',
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = '/chat';
-                } else {
-                    showError(data.error || 'Login failed');
+                body: JSON.stringify({ username, password })
+            });
+            if (response.redirected) {
+                window.location.href = response.url; // Follow the redirect
+            } else {
+                const data = await response.json();
+                if (data.error) {
+                    document.getElementById('error').textContent = data.error;
                 }
-            })
-            .catch(err => showError('Error: ' + err.message));
-        });
-
-        document.getElementById('register-form').addEventListener('submit', e => {
-            e.preventDefault();
-            const username = document.getElementById('reg-username').value;
-            const password = document.getElementById('reg-password').value;
-            fetch('/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
-                credentials: 'include',
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = '/chat';
-                } else {
-                    showError(data.error || 'Registration failed');
-                }
-            })
-            .catch(err => showError('Error: ' + err.message));
+            }
         });
     </script>
 </body>

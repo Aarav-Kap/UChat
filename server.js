@@ -14,7 +14,7 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 
 // Connect to MongoDB
-const mongoURI = 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+const mongoURI = process.env.MONGODB_URI || 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 mongoose.connect(mongoURI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
@@ -37,13 +37,13 @@ store.on('error', err => console.error('Session store error:', err));
 
 // Session middleware
 const sessionMiddleware = session({
-    secret: 'UlisChatSecret2025',
+    secret: process.env.SESSION_SECRET || 'UlisChatSecret2025',
     resave: false,
     saveUninitialized: false,
     store: store,
     cookie: { 
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production', // True on Render
         sameSite: 'lax',
     },
 });
@@ -90,7 +90,7 @@ app.post('/login', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Session save failed' });
             }
-            res.json({ success: true });
+            res.redirect('/chat'); // Redirect to chat page
         });
     } catch (err) {
         console.error('Login error:', err);
@@ -118,7 +118,7 @@ app.post('/register', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Session save failed' });
             }
-            res.json({ success: true });
+            res.redirect('/chat');
         });
     } catch (err) {
         console.error('Register error:', err);
@@ -225,14 +225,13 @@ io.on('connection', async (socket) => {
     // Update or add user to connectedUsers on connection
     const existingSocket = Array.from(connectedUsers.entries()).find(([_, u]) => u.userId === user._id.toString());
     if (existingSocket) {
-        connectedUsers.delete(existingSocket[0]); // Remove old socket if exists
+        connectedUsers.delete(existingSocket[0]);
         console.log(`Removed old socket ${existingSocket[0]} for user ${username}`);
     }
     const socketUser = { id: socket.id, userId: user._id.toString(), username, color };
     connectedUsers.set(socket.id, socketUser);
     console.log(`User connected: ${username} (socket: ${socket.id}, userId: ${user._id})`);
 
-    // Emit user list with userId included
     io.emit('user list', Array.from(connectedUsers.values()));
 
     socket.on('reconnect', async () => {
@@ -261,11 +260,9 @@ io.on('connection', async (socket) => {
         }
         console.log(`DM from ${sender.username} (socket: ${socket.id}, userId: ${sender.userId}) to recipientId: ${msg.recipientId}`);
 
-        // Emit to sender
         socket.emit('dm message', { ...msg, senderId: sender.userId, recipientId: msg.recipientId });
         console.log(`Emitted DM to sender ${sender.username} (socket: ${socket.id})`);
 
-        // Find recipient
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
         if (recipient) {
             const recipientSocket = io.sockets.sockets.get(recipient.id);
@@ -282,9 +279,8 @@ io.on('connection', async (socket) => {
         }
     });
 
-    // WebRTC Signaling for Calls
     socket.on('call-user', data => {
-        const sender = Array.from(connectedUsers.values()).find(u => u.id === socket.id); // Define sender here
+        const sender = Array.from(connectedUsers.values()).find(u => u.id === socket.id);
         if (!sender) {
             console.log('Sender not found in connectedUsers');
             return;

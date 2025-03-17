@@ -1,28 +1,19 @@
 {
-  "name": "united-project",
+  "name": "united-chat",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "A real-time chat application with DMs and calling",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+      "start": "node server.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Aarav-Kap/Uchat.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Aarav-Kap/Uchat/issues"
-  },
-  "homepage": "https://github.com/Aarav-Kap/Uchat#readme",
-  "description": "",
   "dependencies": {
-    "bcryptjs": "^3.0.2",
-    "connect-mongodb-session": "^5.0.0",
-    "express": "^4.21.2",
-    "express-session": "^1.18.1",
-    "mongoose": "^8.12.1",
-    "socket.io": "^4.8.1"
-  }
+      "express": "^4.19.2",
+      "socket.io": "^4.7.5",
+      "express-session": "^1.18.0",
+      "connect-mongodb-session": "^3.1.1",
+      "mongoose": "^8.5.1",
+      "bcryptjs": "^2.4.3"
+  },
+  "author": "Aarav",
+  "license": "MIT"
 }

@@ -9,6 +9,19 @@ const configuration = {
     ]
 };
 
+// Session check on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    const response = await fetch('/user', {
+        method: 'GET',
+        credentials: 'include' // Include cookies
+    });
+    if (response.ok) {
+        initializeUser();
+    } else {
+        window.location.href = '/'; // Redirect to login if not authenticated
+    }
+});
+
 function showError(message) {
     const errorDiv = document.getElementById('error-message');
     errorDiv.textContent = message;
@@ -37,8 +50,6 @@ function initializeUser() {
             setTimeout(() => window.location.href = '/', 1000);
         });
 }
-
-initializeUser();
 
 socket.on('user list', users => {
     const ul = document.getElementById('user-list');
@@ -160,18 +171,15 @@ async function callUser(recipientId) {
 async function setupPeerConnection(recipientId) {
     peerConnection = new RTCPeerConnection(configuration);
 
-    // Get local audio stream
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-    // Handle remote stream
     remoteStream = new MediaStream();
     document.getElementById('remote-audio').srcObject = remoteStream;
     peerConnection.ontrack = event => {
         event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
     };
 
-    // Handle ICE candidates
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
             socket.emit('ice-candidate', {
@@ -201,7 +209,7 @@ function endCall() {
 }
 
 function hangUp() {
-    const recipientId = Object.keys(dmTabs)[0] || ''; // Simplified; adjust based on active call
+    const recipientId = Object.keys(dmTabs)[0] || '';
     socket.emit('hang-up', { to: recipientId, from: userId });
     endCall();
 }
@@ -506,7 +514,7 @@ function loadDMHistory(recipientId) {
 
 function toggleMute() {
     isMuted = !isMuted;
-    document.querySelector('#sidebar button').textContent = `Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
+    document.querySelector('#sidebar button:nth-child(5)').textContent = `Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
 }
 
 function playNotification() {
