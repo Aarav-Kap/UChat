@@ -313,6 +313,7 @@
         function initializeUser() {
             fetch('/user', { method: 'GET', credentials: 'include' })
                 .then(res => {
+                    console.log('User fetch response status:', res.status);
                     if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
                     return res.json();
                 })
@@ -323,7 +324,7 @@
                         setTimeout(() => {
                             console.log('Redirecting to login due to session error');
                             window.location.href = '/';
-                        }, 2000);
+                        }, 0); // Immediate redirect
                         return;
                     }
                     username = data.username;
@@ -343,7 +344,7 @@
                     setTimeout(() => {
                         console.log('Redirecting to login due to fetch error');
                         window.location.href = '/';
-                    }, 2000);
+                    }, 0); // Immediate redirect
                 });
         }
 
@@ -629,7 +630,8 @@
                 fetch('/change-username', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ newUsername: newName.trim() })
+                    body: JSON.stringify({ newUsername: newName.trim() }),
+                    credentials: 'include'
                 })
                     .then(res => res.json())
                     .then(data => {
@@ -661,7 +663,7 @@
         function changeColor(e) {
             e.preventDefault();
             const newColor = document.getElementById('color-picker').value;
-            fetch('/change-color', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color: newColor }) })
+            fetch('/change-color', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color: newColor }), credentials: 'include' })
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
@@ -682,7 +684,7 @@
         function updateLanguage(e) {
             e.preventDefault();
             userLanguage = document.getElementById('language-select').value;
-            fetch('/update-language', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: userLanguage }) })
+            fetch('/update-language', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: userLanguage }), credentials: 'include' })
                 .then(res => res.json())
                 .then(data => {
                     if (!data.success) showError(data.message || 'Failed to update language');
@@ -695,7 +697,7 @@
 
         function logout(e) {
             e.preventDefault();
-            fetch('/logout')
+            fetch('/logout', { credentials: 'include' })
                 .then(() => window.location.href = '/')
                 .catch(err => {
                     console.error('Logout error:', err);
