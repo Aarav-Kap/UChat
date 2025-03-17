@@ -12,16 +12,14 @@ const MongoDBStore = require('connect-mongodb-session')(session);
 const MONGODB_URI = 'mongodb+srv://admin:Aarav123@cluster0.0g3yi.mongodb.net/ulischat?retryWrites=true&w=majority&appName=Cluster0';
 const SESSION_SECRET = 'UlisChat_Secret_2025!@#xK9pLmQ2';
 
-// MongoDB Connection with improved error handling
+// MongoDB Connection
 mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000 // Timeout after 5 seconds
+    serverSelectionTimeoutMS: 5000
 })
     .then(() => console.log('Connected to MongoDB successfully'))
     .catch(err => {
         console.error('MongoDB connection error:', err.message);
-        process.exit(1); // Exit if MongoDB connection fails
+        process.exit(1);
     });
 
 // User Schema
@@ -34,28 +32,47 @@ const User = mongoose.model('User', userSchema);
 const store = new MongoDBStore({
     uri: MONGODB_URI,
     collection: 'sessions',
-    ttl: 14 * 24 * 60 * 60 // 14 days session expiration
+    ttl: 14 * 24 * 60 * 60
 });
 
 store.on('error', err => {
     console.error('Session store error:', err.message);
 });
 
+// Wait for store to be ready
+function ensureStoreReady() {
+    return new Promise((resolve) => {
+        if (store.ready) {
+            console.log('Session store is ready');
+            resolve();
+        } else {
+            console.log('Waiting for session store to be ready...');
+            const checkInterval = setInterval(() => {
+                if (store.ready) {
+                    console.log('Session store is now ready');
+                    clearInterval(checkInterval);
+                    resolve();
+                }
+            }, 1000);
+        }
+    });
+}
+
 // Middleware setup
 app.use(express.static(path.join(__dirname)));
 app.use(express.json());
 app.use(cookieParser());
 
-// Session store readiness middleware
-app.use((req, res, next) => {
+// Ensure session store is ready before proceeding
+app.use(async (req, res, next) => {
     if (!mongoose.connection.readyState) {
-        console.error('MongoDB not connected, cannot proceed with session store');
-        return res.status(503).json({ error: 'Database unavailable, please try again later' });
+        console.error('MongoDB not connected');
+        return res.status(503).json({ error: 'Database unavailable' });
     }
+    await ensureStoreReady();
     if (!store.ready) {
-        console.warn('Session store not ready, attempting to proceed without session');
-        req.session = req.session || {}; // Fallback to in-memory session (temporary)
-        return next();
+        console.warn('Session store not ready after waiting, proceeding with fallback');
+        req.session = req.session || {};
     }
     next();
 });
@@ -66,23 +83,24 @@ app.use(session({
     saveUninitialized: false,
     store: store,
     cookie: {
-        maxAge: 2592000000, // 30 days
+        maxAge: 2592000000,
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Note: NODE_ENV isn't set, defaults to undefined
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax'
     }
 }));
 
+// Ensure / serves login.html and debug session
 app.get('/', (req, res) => {
-    console.log('GET / - Serving login page');
+    console.log('GET / - Serving login page, session:', req.session);
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
+// Login route
 app.post('/login', async (req, res) => {
     console.log('POST /login - Login attempt', req.body);
     const { username, password } = req.body;
     if (!username || username.length < 3 || !password) {
-        console.log('POST /login - Invalid username or password');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     try {
@@ -95,10 +113,10 @@ app.post('/login', async (req, res) => {
         req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
         req.session.save(err => {
             if (err) {
-                console.error('Session save error during login:', err.message);
+                console.error('Session save error:', err.message);
                 return res.status(500).json({ error: 'Failed to save session' });
             }
-            console.log(`POST /login - Success for username: ${username}, session:`, req.session);
+            console.log(`POST /login - Success for username: ${username}`);
             res.json({ success: true });
         });
     } catch (err) {
@@ -107,6 +125,7 @@ app.post('/login', async (req, res) => {
     }
 });
 
+// User data route
 app.get('/user', (req, res) => {
     console.log('GET /user - Fetching user data', req.session);
     try {
@@ -123,11 +142,11 @@ app.get('/user', (req, res) => {
     }
 });
 
+// Change username route
 app.post('/change-username', async (req, res) => {
     console.log('POST /change-username - Attempting to change username');
     const { newUsername } = req.body;
     if (!newUsername || newUsername.length < 3) {
-        console.log('POST /change-username - Invalid new username');
         return res.status(400).json({ error: 'New username must be at least 3 characters long' });
     }
     if (req.session && req.session.user) {
@@ -152,6 +171,7 @@ app.post('/change-username', async (req, res) => {
     }
 });
 
+// Change color route
 app.post('/change-color', (req, res) => {
     console.log('POST /change-color - Changing color');
     const { color } = req.body;
@@ -165,6 +185,7 @@ app.post('/change-color', (req, res) => {
     res.json({ success: true });
 });
 
+// Update language route
 app.post('/update-language', (req, res) => {
     console.log('POST /update-language - Updating language');
     const { language } = req.body;
@@ -178,6 +199,7 @@ app.post('/update-language', (req, res) => {
     res.json({ success: true });
 });
 
+// Logout route
 app.get('/logout', (req, res) => {
     console.log('GET /logout - Logging out');
     if (req.session) {

@@ -128,7 +128,7 @@
             flex: 1;
             overflow-y: auto;
             padding-bottom: 10px;
-            min-height: 0; /* Allows flex to constrain height */
+            min-height: 0;
         }
         .message {
             padding: 12px 15px;
@@ -325,10 +325,8 @@
                     if (data.error) {
                         console.error('User fetch error:', data.error);
                         showError('Not logged in. Redirecting to login...');
-                        // Force redirect with cache-clearing query param to break loop
-                        setTimeout(() => {
-                            window.location.href = '/?nocache=' + Date.now();
-                        }, 1000);
+                        // Immediate redirect with cache-clearing
+                        window.location.href = '/?nocache=' + Date.now();
                         return;
                     }
                     username = data.username;
@@ -345,9 +343,7 @@
                 .catch(err => {
                     console.error('Fetch /user error:', err.message);
                     showError('Failed to load user data. Redirecting to login...');
-                    setTimeout(() => {
-                        window.location.href = '/?nocache=' + Date.now();
-                    }, 1000);
+                    window.location.href = '/?nocache=' + Date.now(); // Immediate redirect
                 });
         }
 
