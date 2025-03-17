@@ -29,8 +29,9 @@ const sessionMiddleware = session({
     store: store,
     cookie: { 
         maxAge: 2592000000, // 30 days
-        secure: process.env.NODE_ENV === 'production', // Secure only in production
+        secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
+        sameSite: 'lax', // Add this to help with cookie issues
     },
 });
 
