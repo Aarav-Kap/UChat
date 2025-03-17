@@ -33,39 +33,43 @@ store.on('error', err => {
 });
 
 const sessionMiddleware = session({
-    secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2', // Use environment variable or fallback
+    secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2',
     resave: false,
     saveUninitialized: false,
     store: store,
-    cookie: { maxAge: 2592000000 } // 30 days
+    cookie: { 
+        maxAge: 2592000000, // 30 days
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production' // Use secure cookies in production
+    }
 });
 
 app.use(sessionMiddleware);
 
 // Share session with Socket.IO
 io.use((socket, next) => {
-    sessionMiddleware(socket.request, {}, next);
+    sessionMiddleware(socket.request, socket.request.res || {}, next);
 });
 
 app.get('/', (req, res) => {
-    console.log('GET / - Serving login page');
+    console.log('GET / - Serving login page, session:', req.session);
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.post('/login', (req, res) => {
-    console.log('POST /login - Login attempt', req.body);
+    console.log('POST /login - Login attempt, body:', req.body, 'session before:', req.session);
     const { username, password } = req.body;
     if (!username || username.length < 3 || !password) {
         console.log('POST /login - Invalid username or password');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
-    console.log(`POST /login - Success for username: ${username}, session:`, req.session);
+    console.log(`POST /login - Success for username: ${username}, session after:`, req.session);
     res.json({ success: true });
 });
 
 app.get('/user', (req, res) => {
-    console.log('GET /user - Fetching user data', req.session);
+    console.log('GET /user - Fetching user data, session:', req.session);
     try {
         if (!req.session || !req.session.user) {
             console.log('GET /user - No session or user data found, redirecting to login');
@@ -115,7 +119,7 @@ app.post('/update-language', (req, res) => {
 });
 
 app.get('/logout', (req, res) => {
-    console.log('GET /logout - Logging out');
+    console.log('GET /logout - Logging out, session:', req.session);
     req.session.destroy(err => {
         if (err) console.error('GET /logout - Error destroying session:', err);
         res.clearCookie('connect.sid');
@@ -127,7 +131,7 @@ app.get('/logout', (req, res) => {
 const connectedUsers = new Map();
 
 io.on('connection', socket => {
-    console.log(`Socket connected: ${socket.id}`);
+    console.log(`Socket connected: ${socket.id}, session:`, socket.request.session);
     const session = socket.request.session;
     if (!session || !session.user) {
         console.log('Socket connection - No session found, disconnecting');

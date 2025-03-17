@@ -8,233 +8,171 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            font-family: Arial, sans-serif;
             display: flex;
             height: 100vh;
-            background: linear-gradient(135deg, #f5f7fa, #e0e5ec);
-            color: #333;
-            overflow: hidden;
         }
         #error-message {
             display: none;
-            color: #e41b1b;
-            font-size: 1em;
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background-color: #ffcccc;
+            color: #cc0000;
             padding: 10px;
-            text-align: center;
-            background: #ffe6e6;
-            border-bottom: 1px solid #e41b1b;
+            border-radius: 5px;
+            z-index: 1000;
         }
         #sidebar {
-            width: 240px;
-            background: #2f2f2f;
-            color: #e0e0e0;
-            padding: 20px;
-            overflow-y: auto;
-            border-right: 1px solid #444;
+            width: 200px;
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            box-sizing: border-box;
         }
-        #sidebar h3 { font-size: 1.2em; margin-bottom: 15px; }
-        #user-list { list-style: none; }
+        #sidebar h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        #user-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
         #user-list li {
-            padding: 12px;
-            margin: 8px 0;
-            border-radius: 8px;
-            background: #3c3c3c;
+            padding: 5px 0;
+            font-size: 14px;
             cursor: pointer;
-            transition: background 0.2s;
         }
-        #user-list li:hover { background: #4a4a4a; }
+        #user-list li:hover {
+            background-color: #444;
+        }
         #chat-container {
-            flex: 1;
+            flex-grow: 1;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
         }
         #header {
-            background: #2f2f2f;
-            color: #e0e0e0;
-            padding: 15px 20px;
+            background-color: #333;
+            color: white;
+            padding: 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid #444;
         }
-        #header .username { font-weight: 500; }
-        #header .controls a {
-            color: #4ecdc4;
-            margin-left: 15px;
+        .controls a {
+            color: #00ced1;
             text-decoration: none;
-            font-size: 0.95em;
+            margin-left: 15px;
+            cursor: pointer;
         }
-        #header .controls a:hover { text-decoration: underline; }
+        .controls a:hover {
+            text-decoration: underline;
+        }
         #tabs {
-            background: #fff;
-            padding: 5px 10px;
-            border-bottom: 1px solid #ddd;
-            overflow-x: auto;
-            white-space: nowrap;
-            flex-shrink: 0;
+            padding: 10px;
+            background-color: #f0f0f0;
         }
-        #tabs button {
-            padding: 10px 15px;
+        .tab-button {
+            padding: 5px 10px;
             margin-right: 5px;
             border: none;
-            background: #4ecdc4;
+            background-color: #00ced1;
             color: white;
-            border-radius: 5px;
             cursor: pointer;
-            font-size: 0.9em;
-            transition: background 0.2s;
         }
-        #tabs button:hover { background: #45b7aa; }
-        #tabs button.active { background: #3e9d96; }
+        .tab-button.active {
+            background-color: #008b8b;
+        }
         #chat-area-container {
-            flex: 1;
-            position: relative;
-            overflow: hidden;
-        }
-        #chat-area {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            padding: 20px;
-            background: #fff;
-            display: none;
-            flex-direction: column;
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #e9ecef;
         }
         .chat-area {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            padding: 20px;
-            background: #fff;
             display: none;
-            flex-direction: column;
         }
         .chat-area.active {
-            display: flex;
-            visibility: visible;
-        }
-        .chat-area:not(.active) {
-            display: none;
-            visibility: hidden;
-        }
-        .chat-content {
-            flex: 1;
-            overflow-y: auto;
-            padding-bottom: 10px;
-            min-height: 0;
-        }
-        .message {
-            padding: 12px 15px;
-            margin: 12px 0;
-            border-radius: 12px;
-            max-width: 65%;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-            display: flex;
-            flex-direction: column;
-            position: relative;
-        }
-        .message.sent {
-            background: linear-gradient(135deg, #1E90FF, #45b7aa);
-            color: #fff;
-            margin-left: auto;
-            align-self: flex-end;
-        }
-        .message.received {
-            background: linear-gradient(135deg, #f1f3f5, #e9ecef);
-            color: #2f2f2f;
-            margin-right: auto;
-            align-self: flex-start;
-        }
-        .message img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
-        .message .meta { font-size: 0.75em; color: #7f8c8d; margin-top: 5px; }
-        .message .username {
-            font-weight: bold;
-            color: var(--username-color, #1E90FF);
-            margin-bottom: 5px;
             display: block;
         }
-        .reply-context {
-            background: #f8f9fa;
-            padding: 10px;
-            border-left: 4px solid #1E90FF;
-            margin-bottom: 8px;
-            border-radius: 8px;
-            font-size: 0.85em;
+        .chat-content {
+            max-height: 100%;
+            overflow-y: auto;
         }
-        .reply-context .reply-username { font-weight: 500; color: #2f2f2f; }
-        .reply-context .reply-text { color: #7f8c8d; }
-        #input-container {
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
-            background: #fff;
-            border-top: 1px solid #ddd;
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
         }
-        #typing-indicator, .typing-indicator {
-            color: #7f8c8d;
+        .message.system {
+            color: #666;
             font-style: italic;
-            margin: 10px 20px;
-            font-size: 0.9em;
-            flex-shrink: 0;
         }
-        #input-area {
-            padding: 15px;
+        .message .username {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .message img {
+            max-width: 200px;
+            margin-top: 5px;
+        }
+        #input-container {
+            padding: 10px;
+            background-color: #fff;
             display: flex;
             align-items: center;
-            flex-shrink: 0;
+        }
+        #typing-indicator {
+            margin-right: 10px;
+            color: #666;
+        }
+        #input-area {
+            display: flex;
+            flex-grow: 1;
         }
         #message-input {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            margin-right: 10px;
-            font-size: 1em;
-            outline: none;
-            transition: border-color 0.2s;
+            flex-grow: 1;
+            padding: 5px;
+            margin-right: 5px;
         }
-        #message-input:focus { border-color: #1E90FF; }
-        #send-button, #image-button {
-            padding: 12px 18px;
-            background: #1E90FF;
+        #language-select {
+            padding: 5px;
+            margin-right: 5px;
+        }
+        button {
+            padding: 5px 10px;
+            background-color: #00ced1;
             color: white;
             border: none;
-            border-radius: 6px;
             cursor: pointer;
-            font-size: 1em;
-            transition: background 0.2s;
         }
-        #send-button:hover, #image-button:hover { background: #45b7aa; }
-        #image-input { display: none; }
+        button:hover {
+            background-color: #008b8b;
+        }
+        #image-button {
+            margin-left: 5px;
+        }
         #color-picker-modal {
             display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-        }
-        #color-picker-content {
-            position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: #fff;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            padding: 20px;
+            border: 1px solid #ccc;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        #color-picker-content {
             text-align: center;
         }
-        #color-picker { width: 60px; height: 60px; cursor: pointer; }
-        select { padding: 12px; border-radius: 6px; margin-right: 10px; font-size: 1em; }
+        #color-picker {
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
@@ -259,7 +197,6 @@
             <div id="chat-area" class="chat-area active">
                 <div class="chat-content"></div>
             </div>
-            <div id="dm-tabs"></div>
         </div>
         <div id="input-container">
             <div id="typing-indicator" class="typing-indicator"></div>
@@ -273,7 +210,7 @@
                     <option value="ru">Russian</option>
                     <option value="hi">Hindi</option>
                 </select>
-                <input type="file" id="image-input" accept="image/*" onchange="sendImage(event)">
+                <input type="file" id="image-input" accept="image/*" style="display: none;" onchange="sendImage(event)">
                 <button id="send-button" onclick="sendMessage(event)">Send</button>
                 <button id="image-button" onclick="document.getElementById('image-input').click()">Image</button>
             </div>
@@ -291,36 +228,58 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io(window.location.origin, { reconnection: true, reconnectionAttempts: 5, reconnectionDelay: 1000 });
+        const socket = io(window.location.origin, { 
+            reconnection: true, 
+            reconnectionAttempts: 5, 
+            reconnectionDelay: 1000 
+        });
         let username = '', userColor = '#1E90FF', userLanguage = 'en', activeTab = 'main', dmTabs = {}, replyTo = null;
         const connectedUsers = {};
 
-        socket.on('connect', () => console.log('Socket.IO connected successfully'));
+        socket.on('connect', () => {
+            console.log('Socket.IO connected successfully');
+        });
+
         socket.on('connect_error', (err) => {
             console.error('Socket.IO connection error:', err.message);
             showError('Connection to server failed. Attempting to reconnect...');
             setTimeout(() => socket.connect(), 1000);
         });
-        socket.on('disconnect', () => console.warn('Socket.IO disconnected'));
+
+        socket.on('disconnect', () => {
+            console.warn('Socket.IO disconnected');
+            showError('Disconnected from server. Reconnecting...');
+        });
 
         function showError(message) {
             const errorDiv = document.getElementById('error-message');
             errorDiv.textContent = message;
             errorDiv.style.display = 'block';
-            setTimeout(() => errorDiv.style.display = 'none', 5000);
+            if (message.includes('Not logged in')) {
+                console.log('Redirecting to login due to 401');
+                setTimeout(() => window.location.href = '/', 2000); // Redirect to login after 2 seconds
+            } else {
+                setTimeout(() => {
+                    errorDiv.style.display = 'none';
+                }, 5000);
+            }
         }
 
         function initializeUser() {
-            fetch('/user', { method: 'GET', credentials: 'include' })
+            fetch('/user', { 
+                method: 'GET', 
+                credentials: 'include' 
+            })
                 .then(res => {
-                    if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! Status: ${res.status}`);
+                    }
                     return res.json();
                 })
                 .then(data => {
                     if (data.error) {
                         console.error('User fetch error:', data.error);
-                        showError('Failed to load user data. Redirecting to login...');
-                        setTimeout(() => window.location.href = '/', 2000);
+                        showError(`Failed to load user data. Redirecting to login... (${data.error})`);
                         return;
                     }
                     username = data.username;
@@ -331,398 +290,318 @@
                     updateColorStyle();
                     console.log('User initialized:', { username, userColor, userLanguage });
 
-                    socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now().toString() });
+                    socket.emit('chat message', { 
+                        username: 'System', 
+                        text: `${username} has joined`, 
+                        id: Date.now().toString(),
+                        system: true 
+                    });
                     loadHistory();
                 })
                 .catch(err => {
                     console.error('Fetch /user error:', err);
-                    showError('Failed to load user data. Redirecting to login...');
-                    setTimeout(() => window.location.href = '/', 2000);
+                    showError(`Failed to load user data. Redirecting to login... (${err.message})`);
                 });
         }
 
         initializeUser();
 
-        socket.on('user count', count => {
-            console.log('User count updated:', count);
-            document.getElementById('user-count').textContent = count || 0;
-        });
-
-        socket.on('user list', users => {
-            console.log('User list updated:', users);
-            users.forEach(user => {
-                connectedUsers[user.id] = user;
-            });
-            const ul = document.getElementById('user-list');
-            ul.innerHTML = users
-                .filter(u => u.username !== username)
-                .map(u => `<li style="color: ${u.color || '#1E90FF'}" onclick="startDM('${u.id}', '${u.username}')">${u.username}</li>`)
-                .join('');
-        });
-
-        socket.on('chat message', msg => {
-            console.log('Received chat message:', msg);
-            handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
-        });
-
-        socket.on('dm message', msg => {
-            console.log('Received DM message:', msg);
-            const recipientId = msg.recipientId === socket.id ? msg.senderId : msg.recipientId;
-            let tab = dmTabs[recipientId];
-            if (!tab) {
-                const recipientUsername = msg.username === username ? getRecipientUsername(recipientId) : msg.username;
-                createDMTab(recipientId, recipientUsername);
-                tab = dmTabs[recipientId];
-            }
-            handleMessage(msg, tab.chat, true);
-            saveMessage(msg, recipientId);
-        });
-
-        socket.on('typing', username => updateTypingIndicator(username));
-        socket.on('stop typing', () => updateTypingIndicator(''));
-        socket.on('name change', data => updateNameChange(data));
-        socket.on('color change', data => {
-            if (data.id === socket.id) {
-                userColor = data.color;
-                updateColorStyle();
-            }
-            updateUserColor(data);
-        });
-
-        function handleMessage(msg, chat, isDM) {
-            if (!chat) {
-                console.error('Chat container not found for message:', msg);
-                return;
-            }
-            if (chat.querySelector(`[data-id="${msg.id}"]`)) return; // Prevent duplicate messages
-            console.log('Handling message for chat:', chat.id, 'Message:', msg);
-            const div = document.createElement('div');
-            div.className = `message ${msg.username === username ? 'sent' : 'received'}`;
-            div.dataset.id = msg.messageId || msg.id;
-            div.dataset.senderId = msg.senderId || '';
-            const usernameColor = msg.username === username ? userColor : (msg.color || '#1E90FF');
-            div.style.setProperty('--username-color', usernameColor);
-
-            const usernameSpan = document.createElement('span');
-            usernameSpan.className = 'username';
-            usernameSpan.textContent = msg.username === username ? 'You' : msg.username;
-            div.appendChild(usernameSpan);
-
-            let text = msg.text || '';
-            if (msg.language !== userLanguage && text && !msg.image) {
-                fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${msg.language}|${userLanguage}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        text = data.responseStatus === 200 ? data.responseData.translatedText : text;
-                        updateMessageContent(div, text, msg.image);
-                    })
-                    .catch(e => {
-                        console.error('Translation error:', e);
-                        updateMessageContent(div, text, msg.image);
-                    });
-            } else {
-                updateMessageContent(div, text, msg.image);
-            }
-
-            if (msg.replyTo) {
-                const reply = document.createElement('div');
-                reply.className = 'reply-context';
-                reply.innerHTML = `<span class="reply-username">${msg.replyTo.username}</span><span class="reply-text">${msg.replyTo.text}</span>`;
-                div.insertAdjacentElement('afterbegin', reply);
-            }
-            if (msg.language !== userLanguage && text && !msg.image) {
-                const orig = document.createElement('div');
-                orig.className = 'meta';
-                orig.textContent = `(${msg.language}: ${msg.text})`;
-                div.appendChild(orig);
-            }
-            const replyBtn = document.createElement('span');
-            replyBtn.textContent = 'Reply';
-            replyBtn.className = 'meta';
-            replyBtn.style.color = '#4ecdc4';
-            replyBtn.onclick = () => setReply(msg);
-            div.appendChild(replyBtn);
-
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-            saveMessage(msg, isDM ? getRecipientId(chat) : null);
-        }
-
-        function updateMessageContent(div, text, image) {
-            const content = image ? `<img src="${image}" alt="Image">` : text;
-            div.innerHTML = `${div.querySelector('.username')?.outerHTML || ''}<span class="meta">${div.querySelector('.meta')?.textContent || ''}</span>${content}${div.querySelector('.reply-context') ? div.querySelector('.reply-context').outerHTML : ''}<span class="meta" style="color: #4ecdc4" onclick="setReply(${JSON.stringify(msg).replace(/"/g, '&quot;')})">Reply</span>`;
-        }
-
-        function getRecipientId(chat) {
-            return Object.keys(dmTabs).find(id => dmTabs[id].chat === chat);
-        }
-
-        function getRecipientUsername(id) {
-            return connectedUsers[id]?.username || 'Unknown';
-        }
-
-        function updateTypingIndicator(username) {
-            const indicator = document.getElementById('typing-indicator');
-            if (indicator) indicator.textContent = username ? `${username} is typing...` : '';
-        }
-
-        function updateNameChange(data) {
-            if (data.oldUsername === username) username = data.newUsername;
-            document.getElementById('current-username').textContent = `Welcome, ${username}`;
-            ['chat-area', ...Object.values(dmTabs).map(t => t.chat)].forEach(chat => {
-                const div = document.createElement('div');
-                div.className = 'meta';
-                div.style.color = '#7f8c8d';
-                div.textContent = `${data.oldUsername} changed to ${data.newUsername}`;
-                chat.appendChild(div);
-                chat.scrollTop = chat.scrollHeight;
-            });
-        }
-
-        function updateUserColor(data) {
-            const userLi = document.querySelector(`#user-list li[onclick*="startDM('${data.id}')"]`);
-            if (userLi) userLi.style.color = data.color;
-            connectedUsers[data.id].color = data.color;
-            document.querySelectorAll('.message.received').forEach(msg => {
-                if (msg.dataset.senderId === data.id) {
-                    msg.style.setProperty('--username-color', data.color);
-                    msg.querySelector('.username').style.color = data.color;
-                }
-            });
-        }
-
-        function startDM(recipientId, recipientUsername) {
-            if (!dmTabs[recipientId]) {
-                createDMTab(recipientId, recipientUsername);
-            }
-            switchTab(`dm-${recipientId}`);
-        }
-
-        function createDMTab(recipientId, recipientUsername) {
-            const tabs = document.getElementById('tabs');
-            const tabBtn = document.createElement('button');
-            tabBtn.className = 'tab-button';
-            tabBtn.setAttribute('data-tab', `dm-${recipientId}`);
-            tabBtn.textContent = `DM: ${recipientUsername}`;
-            tabBtn.onclick = () => switchTab(`dm-${recipientId}`);
-            tabs.appendChild(tabBtn);
-
-            const dmTab = document.createElement('div');
-            dmTab.id = `dm-${recipientId}`;
-            dmTab.className = 'chat-area';
-            dmTab.innerHTML = `<div id="chat-${recipientId}" class="chat-content"></div>`;
-            document.getElementById('dm-tabs').appendChild(dmTab);
-
-            dmTabs[recipientId] = {
-                chat: document.getElementById(`chat-${recipientId}`),
-                button: tabBtn
-            };
-            loadDMHistory(recipientId);
-        }
-
         function switchTab(tabId) {
-            console.log('Switching to tab:', tabId);
             document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.chat-area').forEach(area => {
-                area.classList.remove('active');
-                area.style.visibility = 'hidden';
-                area.style.display = 'none';
-            });
-
-            const tabButton = document.querySelector(`.tab-button[data-tab="${tabId}"]`);
-            if (tabButton) tabButton.classList.add('active');
-
-            const chatArea = tabId === 'main' ? document.getElementById('chat-area') : document.getElementById(tabId);
-            if (chatArea) {
-                chatArea.classList.add('active');
-                chatArea.style.display = 'flex';
-                chatArea.style.visibility = 'visible';
-                const chatContent = chatArea.querySelector('.chat-content');
-                if (chatContent) chatContent.scrollTop = chatContent.scrollHeight;
-            } else {
-                console.error('Chat area not found for tab:', tabId);
-            }
-
+            document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
+            document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+            const chatArea = document.getElementById(tabId === 'main' ? 'chat-area' : tabId);
+            if (chatArea) chatArea.classList.add('active');
             activeTab = tabId;
-            const input = document.getElementById('message-input');
-            const recipientId = tabId.startsWith('dm-') ? tabId.replace('dm-', '') : '';
-            input.dataset.recipient = recipientId;
-            input.disabled = false;
-            input.focus();
-            input.placeholder = recipientId ? `DM to ${getRecipientUsername(recipientId)}...` : 'Type a message...';
-            replyTo = null;
-            updateTypingIndicator('');
+            loadHistory();
         }
 
-        function sendMessage(e) {
-            e.preventDefault();
+        function sendMessage(event) {
+            event.preventDefault();
             const input = document.getElementById('message-input');
-            if (input.disabled || !input.value.trim()) return;
-            const text = input.value.trim();
-            const recipientId = input.dataset.recipient || '';
-            const msg = { username, text, color: userColor, language: userLanguage, id: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
-            if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
-            if (recipientId) {
-                msg.recipientId = recipientId;
-                socket.emit('dm message', msg);
-                console.log('Sent DM message:', msg);
-            } else {
-                socket.emit('chat message', msg);
-                console.log('Sent main chat message:', msg);
-            }
-            input.value = '';
-            socket.emit('stop typing');
-        }
-
-        function sendImage(e) {
-            e.preventDefault();
-            const file = document.getElementById('image-input').files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = e => {
-                const msg = { username, image: e.target.result, color: userColor, language: userLanguage, id: (Date.now() + Math.random().toString(36).substr(2, 9)).toString(), senderId: socket.id };
-                const recipientId = document.getElementById('message-input').dataset.recipient || '';
-                if (replyTo) { msg.replyTo = { username: replyTo.username, text: replyTo.text }; replyTo = null; }
-                if (recipientId) {
-                    msg.recipientId = recipientId;
-                    socket.emit('dm message', msg);
-                    console.log('Sent DM image:', msg);
-                } else {
+            const message = input.value.trim();
+            if (message) {
+                const msg = { 
+                    username, 
+                    text: message, 
+                    color: userColor, 
+                    language: userLanguage, 
+                    id: Date.now().toString(), 
+                    replyTo 
+                };
+                if (activeTab === 'main') {
                     socket.emit('chat message', msg);
-                    console.log('Sent main chat image:', msg);
+                } else {
+                    const recipientId = activeTab.split('-')[1];
+                    socket.emit('dm message', { ...msg, recipientId });
                 }
-                document.getElementById('image-input').value = '';
-            };
-            reader.readAsDataURL(file);
+                input.value = '';
+                replyTo = null;
+                socket.emit('stop typing');
+            }
         }
 
         function handleTyping() {
-            socket.emit('typing', username);
-            clearTimeout(window.typingTimeout);
-            window.typingTimeout = setTimeout(() => socket.emit('stop typing'), 1000);
+            const input = document.getElementById('message-input');
+            if (input.value.trim()) {
+                socket.emit('typing', username);
+            } else {
+                socket.emit('stop typing');
+            }
         }
 
-        function changeUsername(e) {
-            e.preventDefault();
-            const newName = prompt('New username:');
-            if (newName && newName.trim().length >= 3) {
+        function loadHistory() {
+            console.log('Loading chat history for tab:', activeTab);
+            const chatContent = document.querySelector(`#${activeTab === 'main' ? 'chat-area' : activeTab} .chat-content`);
+            if (chatContent) {
+                chatContent.scrollTop = chatContent.scrollHeight;
+            }
+        }
+
+        function updateLanguage(event) {
+            userLanguage = event.target.value;
+            fetch('/update-language', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ language: userLanguage }),
+                credentials: 'include'
+            })
+                .then(res => res.json())
+                .then(data => {
+                    console.log('Language updated:', data);
+                })
+                .catch(err => {
+                    console.error('Error updating language:', err);
+                    showError('Failed to update language');
+                });
+        }
+
+        function changeUsername(event) {
+            event.preventDefault();
+            const oldUsername = username;
+            const newUsername = prompt('Enter new username (min 3 characters):', username);
+            if (newUsername && newUsername.length >= 3 && newUsername !== oldUsername) {
                 fetch('/change-username', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ newUsername: newName.trim() })
+                    body: JSON.stringify({ newUsername }),
+                    credentials: 'include'
                 })
                     .then(res => res.json())
                     .then(data => {
                         if (data.success) {
-                            socket.emit('name change', { oldUsername: username, newUsername: newName.trim(), id: socket.id });
-                            console.log('Username changed:', newName);
+                            username = newUsername;
+                            document.getElementById('current-username').textContent = `Welcome, ${username}`;
+                            socket.emit('name change', { oldUsername, newUsername });
+                            socket.emit('chat message', { 
+                                username: 'System', 
+                                text: `${oldUsername} changed their name to ${newUsername}`, 
+                                id: Date.now().toString(),
+                                system: true 
+                            });
                         } else {
-                            showError(data.message || 'Failed to change username');
+                            showError('Failed to change username');
                         }
                     })
                     .catch(err => {
-                        console.error('Change username error:', err);
-                        showError('Error changing username');
+                        console.error('Error changing username:', err);
+                        showError('Failed to change username');
                     });
             }
         }
 
-        function showColorPicker(e) {
-            e.preventDefault();
-            document.getElementById('color-picker-modal').style.display = 'block';
+        function showColorPicker(event) {
+            event.preventDefault();
             document.getElementById('color-picker').value = userColor;
+            document.getElementById('color-picker-modal').style.display = 'block';
         }
 
-        function hideColorPicker(e) {
-            e.preventDefault();
+        function changeColor(event) {
+            event.preventDefault();
+            const newColor = document.getElementById('color-picker').value;
+            if (newColor !== userColor) {
+                userColor = newColor;
+                updateColorStyle();
+                fetch('/change-color', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ color: userColor }),
+                    credentials: 'include'
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            socket.emit('color change', { id: socket.id, color: userColor });
+                        } else {
+                            showError('Failed to change color');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error changing color:', err);
+                        showError('Failed to change color');
+                    });
+            }
+            hideColorPicker(event);
+        }
+
+        function hideColorPicker(event) {
+            event.preventDefault();
             document.getElementById('color-picker-modal').style.display = 'none';
         }
 
-        function changeColor(e) {
-            e.preventDefault();
-            const newColor = document.getElementById('color-picker').value;
-            fetch('/change-color', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color: newColor }) })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        userColor = newColor;
-                        socket.emit('color change', { id: socket.id, color: newColor });
-                        updateColorStyle();
-                        console.log('Color changed:', newColor);
-                    } else {
-                        showError(data.message || 'Failed to change color');
-                    }
-                })
-                .catch(err => {
-                    console.error('Change color error:', err);
-                    showError('Error changing color');
-                });
+        function updateColorStyle() {
+            document.querySelectorAll('.message').forEach(msg => {
+                const userSpan = msg.querySelector('.username');
+                if (userSpan && userSpan.textContent === username) {
+                    userSpan.style.color = userColor;
+                }
+            });
+            const userLi = Array.from(document.querySelectorAll('#user-list li')).find(li => li.textContent === username);
+            if (userLi) userLi.style.color = userColor;
         }
 
-        function updateLanguage(e) {
-            e.preventDefault();
-            userLanguage = document.getElementById('language-select').value;
-            fetch('/update-language', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: userLanguage }) })
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.success) showError(data.message || 'Failed to update language');
+        function logout(event) {
+            event.preventDefault();
+            fetch('/logout', { 
+                method: 'GET', 
+                credentials: 'include' 
+            })
+                .then(() => {
+                    window.location.href = '/';
                 })
-                .catch(err => {
-                    console.error('Update language error:', err);
-                    showError('Error updating language');
-                });
-        }
-
-        function logout(e) {
-            e.preventDefault();
-            fetch('/logout')
-                .then(() => window.location.href = '/')
                 .catch(err => {
                     console.error('Logout error:', err);
-                    showError('Error logging out');
+                    showError('Failed to logout');
                 });
         }
 
-        function setReply(msg) {
-            replyTo = msg;
-            document.getElementById('message-input').placeholder = `Replying to ${msg.username}: ${msg.text.substring(0, 20)}...`;
-            document.getElementById('message-input').focus();
+        function sendImage(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const msg = { 
+                        username, 
+                        text: e.target.result, 
+                        color: userColor, 
+                        language: userLanguage, 
+                        id: Date.now().toString(), 
+                        isImage: true 
+                    };
+                    if (activeTab === 'main') {
+                        socket.emit('chat message', msg);
+                    } else {
+                        const recipientId = activeTab.split('-')[1];
+                        socket.emit('dm message', { ...msg, recipientId });
+                    }
+                };
+                reader.readAsDataURL(file);
+                event.target.value = '';
+            }
         }
 
-        function saveMessage(msg, recipientId) {
-            const key = `history_${username}_${recipientId || 'main'}`;
-            const history = JSON.parse(localStorage.getItem(key) || '[]');
-            history.push(msg);
-            localStorage.setItem(key, JSON.stringify(history));
-        }
+        socket.on('chat message', msg => {
+            const chatContent = document.querySelector('#chat-area .chat-content');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message' + (msg.system ? ' system' : '');
+            if (msg.isImage) {
+                messageDiv.innerHTML = `<span class="username" style="color: ${msg.color}">${msg.username}</span>: <br><img src="${msg.text}" alt="Image">`;
+            } else {
+                messageDiv.innerHTML = `<span class="username" style="color: ${msg.color}">${msg.username}</span>: ${msg.text}`;
+            }
+            chatContent.appendChild(messageDiv);
+            chatContent.scrollTop = chatContent.scrollHeight;
+        });
 
-        function loadHistory() {
-            const history = JSON.parse(localStorage.getItem(`history_${username}_main`) || '[]');
-            history.forEach(msg => handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false));
-        }
+        socket.on('dm message', msg => {
+            const tabId = `dm-${msg.senderId}`;
+            if (!dmTabs[tabId]) {
+                const recipient = connectedUsers[msg.senderId];
+                if (!recipient) return;
+                const button = document.createElement('button');
+                button.className = 'tab-button';
+                button.textContent = `DM: ${recipient.username}`;
+                button.dataset.tab = tabId;
+                button.onclick = () => switchTab(tabId);
+                document.getElementById('tabs').appendChild(button);
 
-        function loadDMHistory(recipientId) {
-            const history = JSON.parse(localStorage.getItem(`history_${username}_${recipientId}`) || '[]');
-            history.forEach(msg => handleMessage(msg, dmTabs[recipientId].chat, true));
-        }
+                const dmArea = document.createElement('div');
+                dmArea.id = tabId;
+                dmArea.className = 'chat-area';
+                dmArea.innerHTML = '<div class="chat-content"></div>';
+                document.getElementById('chat-area-container').appendChild(dmArea);
+                dmTabs[tabId] = true;
+            }
+            const chatContent = document.querySelector(`#${tabId} .chat-content`);
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            if (msg.isImage) {
+                messageDiv.innerHTML = `<span class="username" style="color: ${msg.color}">${msg.username}</span>: <br><img src="${msg.text}" alt="Image">`;
+            } else {
+                messageDiv.innerHTML = `<span class="username" style="color: ${msg.color}">${msg.username}</span>: ${msg.text}`;
+            }
+            chatContent.appendChild(messageDiv);
+            chatContent.scrollTop = chatContent.scrollHeight;
+        });
 
-        function updateColorStyle() {
-            document.documentElement.style.setProperty('--user-color', userColor);
-            document.documentElement.style.setProperty('--username-color', userColor);
-            document.documentElement.style.setProperty('--user-color-light', lightenColor(userColor, 10));
-        }
+        socket.on('user count', count => {
+            document.getElementById('user-count').textContent = count;
+        });
 
-        function lightenColor(hex, percent) {
-            let r = parseInt(hex.slice(1, 3), 16),
-                g = parseInt(hex.slice(3, 5), 16),
-                b = parseInt(hex.slice(5, 7), 16);
-            r = Math.min(255, Math.floor(r + (255 - r) * (percent / 100)));
-            g = Math.min(255, Math.floor(g + (255 - g) * (percent / 100)));
-            b = Math.min(255, Math.floor(b + (255 - b) * (percent / 100)));
-            return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-        }
+        socket.on('user list', users => {
+            const userList = document.getElementById('user-list');
+            userList.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = user.username;
+                li.style.color = user.color;
+                li.onclick = () => {
+                    const tabId = `dm-${user.id}`;
+                    if (!dmTabs[tabId]) switchTab(tabId);
+                    else switchTab(tabId);
+                };
+                userList.appendChild(li);
+                connectedUsers[user.id] = user;
+            });
+            updateColorStyle();
+        });
 
-        loadHistory();
+        socket.on('name change', data => {
+            const user = Object.values(connectedUsers).find(u => u.username === data.oldUsername);
+            if (user) {
+                user.username = data.newUsername;
+                const userLi = Array.from(document.querySelectorAll('#user-list li')).find(li => li.textContent === data.oldUsername);
+                if (userLi) userLi.textContent = data.newUsername;
+                const tabButton = document.querySelector(`[data-tab="dm-${user.id}"]`);
+                if (tabButton) tabButton.textContent = `DM: ${data.newUsername}`;
+            }
+        });
+
+        socket.on('color change', data => {
+            const user = connectedUsers[data.id];
+            if (user) {
+                user.color = data.color;
+                const userLi = Array.from(document.querySelectorAll('#user-list li')).find(li => li.textContent === user.username);
+                if (userLi) userLi.style.color = data.color;
+                document.querySelectorAll('.message').forEach(msg => {
+                    const userSpan = msg.querySelector('.username');
+                    if (userSpan && userSpan.textContent === user.username) {
+                        userSpan.style.color = data.color;
+                    }
+                });
+            }
+        });
+
+        socket.on('typing', user => {
+            if (activeTab === 'main' || activeTab === `dm-${Object.values(connectedUsers).find(u => u.username === user)?.id}`) {
+                const typingIndicator = document.getElementById('typing-indicator');
+                typingIndicator.textContent = `${user} is typing...`;
+            }
+        });
+
+        socket.on('stop typing', () => {
+            document.getElementById('typing-indicator').textContent = '';
+        });
     </script>
     <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'921e80876920257a',t:'MTc0MjIzNTYwMy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </body>
