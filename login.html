@@ -4,65 +4,81 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - UlisChat</title>
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
     <style>
-        /* [Existing styles remain unchanged] */
+        body {
+            font-family: 'Roboto', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #f5f7fa, #e0e5ec);
+            margin: 0;
+        }
+        .login-container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 300px;
+            text-align: center;
+        }
+        h2 { margin-bottom: 20px; color: #333; }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4ecdc4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        button:hover { background: #45b7aa; }
+        .register-link { margin-top: 10px; }
+        .register-link a { color: #4ecdc4; text-decoration: none; }
+        .register-link a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
-    <div id="login-container">
-        <h2>Login to UlisChat</h2>
-        <input type="text" id="username" placeholder="Username">
-        <input type="password" id="password" placeholder="Password">
-        <button onclick="login()">Login</button>
-        <div id="error-message"></div>
+    <div class="login-container">
+        <h2>Login</h2>
+        <form action="/login" method="post">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <div class="register-link">
+            Don't have an account? <a href="#" onclick="showRegister()">Register</a>
+        </div>
+        <div id="register-form" style="display: none;">
+            <form action="/register" method="post">
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Register</button>
+            </form>
+            <div><a href="#" onclick="showLogin()">Back to Login</a></div>
+        </div>
     </div>
-
     <script>
-        function login() {
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('error-message');
-
-            if (!username || username.length < 3 || !password) {
-                errorDiv.textContent = 'Username and password must be at least 3 characters long';
-                errorDiv.style.display = 'block';
-                setTimeout(() => errorDiv.style.display = 'none', 3000);
-                return;
-            }
-
-            fetch('/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
-                credentials: 'include'
-            })
-                .then(res => {
-                    if (!res.ok) throw new Error('Login failed');
-                    return res.json();
-                })
-                .then(data => {
-                    if (data.success) {
-                        window.location.href = '/chat?nocache=' + Date.now();
-                    } else {
-                        errorDiv.textContent = data.error || 'Login failed';
-                        errorDiv.style.display = 'block';
-                        setTimeout(() => errorDiv.style.display = 'none', 3000);
-                    }
-                })
-                .catch(err => {
-                    console.error('Login error:', err.message);
-                    errorDiv.textContent = 'Error logging in';
-                    errorDiv.style.display = 'block';
-                    setTimeout(() => errorDiv.style.display = 'none', 3000);
-                });
+        function showRegister() {
+            document.querySelector('form').style.display = 'none';
+            document.querySelector('.register-link').style.display = 'none';
+            document.getElementById('register-form').style.display = 'block';
         }
-
-        document.getElementById('password').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') login();
-        });
+        function showLogin() {
+            document.querySelector('form').style.display = 'block';
+            document.querySelector('.register-link').style.display = 'block';
+            document.getElementById('register-form').style.display = 'none';
+        }
     </script>
+    <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'921e80875bd4bc83',t:'MTc0MjIzNTYwMy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </body>
 </html>
