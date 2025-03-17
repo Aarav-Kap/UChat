@@ -32,6 +32,10 @@ store.on('error', err => {
     console.error('Session store error:', err);
 });
 
+store.on('connected', () => {
+    console.log('Session store connected to MongoDB');
+});
+
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET || 'UlisChat_Secret_2025!@#xK9pLmQ2',
     resave: false,
@@ -40,7 +44,8 @@ const sessionMiddleware = session({
     cookie: { 
         maxAge: 2592000000, // 30 days
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' // Use secure cookies in production
+        secure: process.env.NODE_ENV === 'production', // Secure in production (HTTPS)
+        sameSite: 'lax' // Ensure cookies are sent in cross-site requests
     }
 });
 
@@ -64,8 +69,17 @@ app.post('/login', (req, res) => {
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
-    console.log(`POST /login - Success for username: ${username}, session after:`, req.session);
-    res.json({ success: true });
+    console.log('POST /login - Setting session.user:', req.session.user);
+    
+    // Ensure session is saved before responding
+    req.session.save(err => {
+        if (err) {
+            console.error('POST /login - Error saving session:', err);
+            return res.status(500).json({ error: 'Failed to save session' });
+        }
+        console.log('POST /login - Session saved successfully, session:', req.session);
+        res.json({ success: true });
+    });
 });
 
 app.get('/user', (req, res) => {
@@ -93,9 +107,17 @@ app.post('/change-username', (req, res) => {
     }
     if (req.session && req.session.user) {
         req.session.user.username = newUsername;
+        req.session.save(err => {
+            if (err) {
+                console.error('POST /change-username - Error saving session:', err);
+                return res.status(500).json({ error: 'Failed to save session' });
+            }
+            console.log(`POST /change-username - Success: newUsername=${newUsername}`);
+            res.json({ success: true });
+        });
+    } else {
+        res.status(401).json({ error: 'Not logged in' });
     }
-    console.log(`POST /change-username - Success: newUsername=${newUsername}`);
-    res.json({ success: true });
 });
 
 app.post('/change-color', (req, res) => {
@@ -103,9 +125,17 @@ app.post('/change-color', (req, res) => {
     const { color } = req.body;
     if (req.session && req.session.user) {
         req.session.user.color = color;
+        req.session.save(err => {
+            if (err) {
+                console.error('POST /change-color - Error saving session:', err);
+                return res.status(500).json({ error: 'Failed to save session' });
+            }
+            console.log(`POST /change-color - Success: color=${color}`);
+            res.json({ success: true });
+        });
+    } else {
+        res.status(401).json({ error: 'Not logged in' });
     }
-    console.log(`POST /change-color - Success: color=${color}`);
-    res.json({ success: true });
 });
 
 app.post('/update-language', (req, res) => {
@@ -113,9 +143,17 @@ app.post('/update-language', (req, res) => {
     const { language } = req.body;
     if (req.session && req.session.user) {
         req.session.user.language = language;
+        req.session.save(err => {
+            if (err) {
+                console.error('POST /update-language - Error saving session:', err);
+                return res.status(500).json({ error: 'Failed to save session' });
+            }
+            console.log(`POST /update-language - Success: language=${language}`);
+            res.json({ success: true });
+        });
+    } else {
+        res.status(401).json({ error: 'Not logged in' });
     }
-    console.log(`POST /update-language - Success: language=${language}`);
-    res.json({ success: true });
 });
 
 app.get('/logout', (req, res) => {

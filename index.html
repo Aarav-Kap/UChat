@@ -257,7 +257,9 @@
             errorDiv.style.display = 'block';
             if (message.includes('Not logged in')) {
                 console.log('Redirecting to login due to 401');
-                setTimeout(() => window.location.href = '/', 2000); // Redirect to login after 2 seconds
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000); // Redirect to login after 2 seconds
             } else {
                 setTimeout(() => {
                     errorDiv.style.display = 'none';
