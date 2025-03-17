@@ -15,25 +15,79 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
+// User Schema
+const userSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true }
+});
+const User = mongoose.model('User', userSchema);
+
+// Session Store
+const store = new MongoDBStore({
+    uri: process.env.MONGODB_URI,
+    collection: 'sessions',
+    ttl: 14 * 24 * 60 * 60 // 14 days session expiration
+});
+
+store.on('error', err => {
+    console.error('Session store error:', err);
+});
+
 app.use(express.static(path.join(__dirname)));
 app.use(express.json());
 app.use(cookieParser());
+
+app.use((req, res, next) => {
+    if (!store.ready) {
+        console.warn('Session store not ready, delaying request');
+        return setTimeout(() => next(), 100); // Retry after a short delay
+    }
+    next();
+});
+
+app.use(session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    store: store,
+    cookie: {
+        maxAge: 2592000000, // 30 days
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax'
+    }
+}));
 
 app.get('/', (req, res) => {
     console.log('GET / - Serving login page');
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     console.log('POST /login - Login attempt', req.body);
     const { username, password } = req.body;
     if (!username || username.length < 3 || !password) {
         console.log('POST /login - Invalid username or password');
         return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
-    req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
-    console.log(`POST /login - Success for username: ${username}`);
-    res.json({ success: true });
+    try {
+        let user = await User.findOne({ username });
+        if (!user) {
+            // Create new user if not exists (for simplicity, no password hashing yet)
+            user = new User({ username });
+            await user.save();
+            console.log(`POST /login - Created new user: ${username}`);
+        }
+        // For now, accept any password (to be replaced with proper auth)
+        req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
+        req.session.save(err => {
+            if (err) console.error('Session save error:', err);
+        });
+        console.log(`POST /login - Success for username: ${username}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('POST /login - Error:', err);
+        res.status(500).json({ error: 'Login failed' });
+    }
 });
 
 app.get('/user', (req, res) => {
@@ -52,7 +106,7 @@ app.get('/user', (req, res) => {
     }
 });
 
-app.post('/change-username', (req, res) => {
+app.post('/change-username', async (req, res) => {
     console.log('POST /change-username - Attempting to change username');
     const { newUsername } = req.body;
     if (!newUsername || newUsername.length < 3) {
@@ -60,10 +114,25 @@ app.post('/change-username', (req, res) => {
         return res.status(400).json({ error: 'New username must be at least 3 characters long' });
     }
     if (req.session && req.session.user) {
-        req.session.user.username = newUsername;
+        try {
+            const existingUser = await User.findOne({ username: newUsername });
+            if (existingUser) {
+                return res.status(400).json({ error: 'Username already taken' });
+            }
+            await User.findOneAndUpdate({ username: req.session.user.username }, { username: newUsername });
+            req.session.user.username = newUsername;
+            req.session.save(err => {
+                if (err) console.error('Session save error:', err);
+            });
+            console.log(`POST /change-username - Success: newUsername=${newUsername}`);
+            res.json({ success: true });
+        } catch (err) {
+            console.error('POST /change-username - Error:', err);
+            res.status(500).json({ error: 'Failed to change username' });
+        }
+    } else {
+        res.status(401).json({ error: 'Not logged in' });
     }
-    console.log(`POST /change-username - Success: newUsername=${newUsername}`);
-    res.json({ success: true });
 });
 
 app.post('/change-color', (req, res) => {
@@ -71,6 +140,9 @@ app.post('/change-color', (req, res) => {
     const { color } = req.body;
     if (req.session && req.session.user) {
         req.session.user.color = color;
+        req.session.save(err => {
+            if (err) console.error('Session save error:', err);
+        });
     }
     console.log(`POST /change-color - Success: color=${color}`);
     res.json({ success: true });
@@ -81,6 +153,9 @@ app.post('/update-language', (req, res) => {
     const { language } = req.body;
     if (req.session && req.session.user) {
         req.session.user.language = language;
+        req.session.save(err => {
+            if (err) console.error('Session save error:', err);
+        });
     }
     console.log(`POST /update-language - Success: language=${language}`);
     res.json({ success: true });
@@ -88,12 +163,20 @@ app.post('/update-language', (req, res) => {
 
 app.get('/logout', (req, res) => {
     console.log('GET /logout - Logging out');
-    req.session.destroy(err => {
-        if (err) console.error('GET /logout - Error destroying session:', err);
-        res.clearCookie('connect.sid');
-        console.log('GET /logout - Session destroyed');
+    if (req.session) {
+        req.session.destroy(err => {
+            if (err) {
+                console.error('GET /logout - Error destroying session:', err);
+                return res.status(500).json({ error: 'Failed to logout' });
+            }
+            res.clearCookie('connect.sid');
+            console.log('GET /logout - Session destroyed');
+            res.redirect('/');
+        });
+    } else {
+        console.warn('GET /logout - No session to destroy');
         res.redirect('/');
-    });
+    }
 });
 
 const connectedUsers = new Map();
@@ -150,23 +233,6 @@ io.on('connection', socket => {
     io.emit('user count', connectedUsers.size);
     io.emit('user list', Array.from(connectedUsers.values()));
 });
-
-const store = new MongoDBStore({
-    uri: process.env.MONGODB_URI,
-    collection: 'sessions'
-});
-
-store.on('error', err => {
-    console.error('Session store error:', err);
-});
-
-app.use(session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    store: store,
-    cookie: { maxAge: 2592000000 } // 30 days
-}));
 
 http.listen(process.env.PORT || 3000, () => {
     console.log(`Server running on port ${process.env.PORT || 3000}`);

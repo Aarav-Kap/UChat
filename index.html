@@ -319,8 +319,8 @@
                 .then(data => {
                     if (data.error) {
                         console.error('User fetch error:', data.error);
-                        showError('Failed to load user data. Redirecting to login...');
-                        setTimeout(() => window.location.href = '/', 2000);
+                        showError('Not logged in. Redirecting to login...');
+                        setTimeout(() => window.location.href = '/', 1000); // Force redirect to login
                         return;
                     }
                     username = data.username;
@@ -337,7 +337,7 @@
                 .catch(err => {
                     console.error('Fetch /user error:', err);
                     showError('Failed to load user data. Redirecting to login...');
-                    setTimeout(() => window.location.href = '/', 2000);
+                    setTimeout(() => window.location.href = '/', 1000); // Force redirect to login
                 });
         }
 
@@ -615,7 +615,8 @@
                 fetch('/change-username', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ newUsername: newName.trim() })
+                    body: JSON.stringify({ newUsername: newName.trim() }),
+                    credentials: 'include'
                 })
                     .then(res => res.json())
                     .then(data => {
@@ -647,7 +648,12 @@
         function changeColor(e) {
             e.preventDefault();
             const newColor = document.getElementById('color-picker').value;
-            fetch('/change-color', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color: newColor }) })
+            fetch('/change-color', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ color: newColor }),
+                credentials: 'include'
+            })
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
@@ -668,7 +674,12 @@
         function updateLanguage(e) {
             e.preventDefault();
             userLanguage = document.getElementById('language-select').value;
-            fetch('/update-language', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: userLanguage }) })
+            fetch('/update-language', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ language: userLanguage }),
+                credentials: 'include'
+            })
                 .then(res => res.json())
                 .then(data => {
                     if (!data.success) showError(data.message || 'Failed to update language');
@@ -681,8 +692,10 @@
 
         function logout(e) {
             e.preventDefault();
-            fetch('/logout')
-                .then(() => window.location.href = '/')
+            fetch('/logout', { credentials: 'include' })
+                .then(() => {
+                    window.location.href = '/';
+                })
                 .catch(err => {
                     console.error('Logout error:', err);
                     showError('Error logging out');
@@ -730,5 +743,6 @@
 
         loadHistory();
     </script>
+    <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'921d21a9ea80afaa',t:'MTc0MjIyMTIzMS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </body>
 </html>
