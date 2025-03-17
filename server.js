@@ -1,305 +1,122 @@
 const express = require('express');
 const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http, {
-    maxHttpBufferSize: 5 * 1024 * 1024 // 5MB for image uploads
-});
-const bcrypt = require('bcrypt');
-const session = require('express-session');
-const sharedsession = require('express-socket.io-session');
-const mongoose = require('mongoose');
-const MongoStore = require('connect-mongo');
+const http = require('http').Server(app);
+const io = require('socket.io')(http);
+const cookieParser = require('cookie-parser');
+const path = require('path');
+const mongoose = require('mongoose'); // Assuming MongoDB is used
 
-// Session middleware with MongoDB store
-const sessionMiddleware = session({
-    secret: 'your-secret-key',
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({
-        mongoUrl: 'mongodb+srv://admin:Aarav123%2E@cluster0.0g3yi.mongodb.net/ulis_chat?retryWrites=true&w=majority&appName=Cluster0',
-        collectionName: 'sessions',
-        ttl: 30 * 24 * 60 * 60 // 30 days
-    }),
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: false } // Temporarily disable secure for debugging
-});
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(sessionMiddleware);
-
-// Connect to MongoDB Atlas
-mongoose.connect('mongodb+srv://admin:Aarav123%2E@cluster0.0g3yi.mongodb.net/ulis_chat?retryWrites=true&w=majority&appName=Cluster0', {
+// MongoDB Connection (adjust URI as needed)
+mongoose.connect('mongodb://localhost:27017/ulischat', {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-    connectTimeoutMS: 10000
 })
     .then(() => console.log('Connected to MongoDB'))
-    .catch(err => {
-        console.error('MongoDB connection error:', err);
-        process.exit(1);
-    });
+    .catch(err => console.error('MongoDB connection error:', err));
 
-mongoose.connection.on('error', (err) => {
-    console.error('MongoDB connection error after initial connect:', err);
-});
-mongoose.connection.on('disconnected', () => {
-    console.warn('MongoDB disconnected, attempting to reconnect...');
-});
-
-// Define User schema
-const userSchema = new mongoose.Schema({
-    username: { type: String, unique: true, required: true },
-    password: { type: String, required: true }
-});
-const User = mongoose.model('User', userSchema);
-
-// Define ChatHistory schema
-const chatHistorySchema = new mongoose.Schema({
-    username: String,
-    recipientId: { type: String, default: null },
-    messages: [{
-        username: String,
-        text: String,
-        color: String,
-        language: String,
-        messageId: { type: String, required: true }, // Use client-provided ID as string
-        replyTo: {
-            username: String,
-            text: String
-        },
-        isDM: Boolean,
-        image: String,
-        timestamp: { type: Date, default: Date.now }
-    }]
-});
-const ChatHistory = mongoose.model('ChatHistory', chatHistorySchema);
-
-io.use(sharedsession(sessionMiddleware, {
-    autoSave: true
-}));
-
-// Serve static files with cache-control
-app.use((req, res, next) => {
-    res.set('Cache-Control', 'no-store');
-    next();
-});
+app.use(express.static(path.join(__dirname)));
+app.use(express.json());
+app.use(cookieParser());
 
 app.get('/', (req, res) => {
-    console.log('GET / - Session:', req.session);
-    if (!req.session.user) {
-        res.sendFile(__dirname + '/login.html');
-    } else {
-        res.sendFile(__dirname + '/index.html');
-    }
+    console.log('GET / - Serving login page');
+    res.sendFile(path.join(__dirname, 'login.html'));
 });
 
-app.post('/register', async (req, res) => {
+app.post('/login', (req, res) => {
+    console.log('POST /login - Login attempt', req.body);
     const { username, password } = req.body;
-    console.log('POST /register - Request body:', req.body);
-    if (!username || !password) {
-        return res.status(400).send('Username and password are required');
+    if (!username || username.length < 3 || !password) {
+        console.log('POST /login - Invalid username or password');
+        return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
-
-    try {
-        const existingUser = await User.findOne({ username });
-        if (existingUser) {
-            return res.status(400).send('Username already exists');
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new User({ username, password: hashedPassword });
-        await user.save();
-        req.session.user = { username, color: '#1E90FF', language: 'en' }; // Changed default color to blue
-        await req.session.save();
-        console.log('User registered and session saved:', username);
-        res.redirect('/');
-    } catch (err) {
-        console.error('Register error:', err);
-        res.status(500).send('Server error');
-    }
-});
-
-app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    console.log('POST /login - Request body:', req.body);
-    if (!username || !password) {
-        return res.status(400).send('Username and password are required');
-    }
-
-    try {
-        const user = await User.findOne({ username });
-        if (!user || !(await bcrypt.compare(password, user.password))) {
-            console.log('Login failed for:', username);
-            return res.status(401).send('Invalid username or password');
-        }
-
-        req.session.user = { username, color: req.session.user?.color || '#1E90FF', language: req.session.user?.language || 'en' }; // Changed default color to blue
-        await req.session.save();
-        console.log('User logged in and session saved:', username);
-        res.redirect('/');
-    } catch (err) {
-        console.error('Login error:', err);
-        res.status(500).send('Server error');
-    }
-});
-
-app.get('/logout', (req, res) => {
-    console.log('GET /logout - Session:', req.session);
-    req.session.destroy(err => {
-        if (err) console.error('Logout error:', err);
-        res.redirect('/');
-    });
+    // Save session (assuming MongoDB or in-memory session)
+    req.session.user = { username, color: req.body.color || '#1E90FF', language: req.body.language || 'en' };
+    console.log(`POST /login - Success for username: ${username}`);
+    res.json({ success: true });
 });
 
 app.get('/user', (req, res) => {
-    console.log('GET /user - Session:', req.session);
-    if (req.session.user) {
-        res.json({ username: req.session.user.username, color: req.session.user.color, language: req.session.user.language });
-    } else {
-        res.status(401).json({ error: 'Not logged in' });
+    console.log('GET /user - Fetching user data', req.session);
+    try {
+        if (!req.session || !req.session.user) {
+            console.log('GET /user - No session or user data found, redirecting to login');
+            return res.status(401).json({ error: 'Not logged in' });
+        }
+        const { username, color, language } = req.session.user;
+        console.log(`GET /user - Success: username=${username}, color=${color}, language=${language}`);
+        res.json({ username, color, language });
+    } catch (error) {
+        console.error('GET /user - Error:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-app.post('/change-username', async (req, res) => {
-    console.log('POST /change-username - Request body:', req.body);
-    if (!req.session.user) return res.status(401).json({ success: false, message: 'Not logged in' });
+app.post('/change-username', (req, res) => {
+    console.log('POST /change-username - Attempting to change username');
     const { newUsername } = req.body;
-    if (!newUsername || newUsername.trim() === '') {
-        return res.status(400).json({ success: false, message: 'Invalid username' });
+    if (!newUsername || newUsername.length < 3) {
+        console.log('POST /change-username - Invalid new username');
+        return res.status(400).json({ error: 'New username must be at least 3 characters long' });
     }
-
-    try {
-        const existingUser = await User.findOne({ username: newUsername });
-        if (existingUser && newUsername !== req.session.user.username) {
-            return res.status(400).json({ success: false, message: 'Username already taken' });
-        }
-
-        const oldUsername = req.session.user.username;
-        const user = await User.findOne({ username: oldUsername });
-        if (!user) return res.status(400).json({ success: false, message: 'User not found' });
-
-        user.username = newUsername;
-        await user.save();
-
-        // Update ChatHistory
-        await ChatHistory.updateMany({ username: oldUsername }, { username: newUsername });
+    if (req.session && req.session.user) {
         req.session.user.username = newUsername;
-        await req.session.save();
-        console.log('Username changed from', oldUsername, 'to', newUsername);
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Change username error:', err);
-        res.status(500).json({ success: false, message: 'Server error' });
     }
+    console.log(`POST /change-username - Success: newUsername=${newUsername}`);
+    res.json({ success: true });
 });
 
 app.post('/change-color', (req, res) => {
-    console.log('POST /change-color - Request body:', req.body);
-    if (!req.session.user) return res.status(401).json({ success: false, message: 'Not logged in' });
+    console.log('POST /change-color - Changing color');
     const { color } = req.body;
-    if (!color || !/^#[0-9A-F]{6}$/i.test(color)) {
-        return res.status(400).json({ success: false, message: 'Invalid color' });
+    if (req.session && req.session.user) {
+        req.session.user.color = color;
     }
-
-    req.session.user.color = color;
-    req.session.save(err => {
-        if (err) console.error('Session save error:', err);
-        console.log('Color changed for', req.session.user.username, 'to', color);
-        res.json({ success: true });
-    });
+    console.log(`POST /change-color - Success: color=${color}`);
+    res.json({ success: true });
 });
 
 app.post('/update-language', (req, res) => {
-    console.log('POST /update-language - Request body:', req.body);
-    if (!req.session.user) return res.status(401).json({ success: false, message: 'Not logged in' });
+    console.log('POST /update-language - Updating language');
     const { language } = req.body;
-    if (!language || !['en', 'fr', 'es', 'pt', 'ru', 'hi'].includes(language)) {
-        return res.status(400).json({ success: false, message: 'Invalid language' });
+    if (req.session && req.session.user) {
+        req.session.user.language = language;
     }
+    console.log(`POST /update-language - Success: language=${language}`);
+    res.json({ success: true });
+});
 
-    req.session.user.language = language;
-    req.session.save(err => {
-        if (err) console.error('Session save error:', err);
-        console.log('Language updated for', req.session.user.username, 'to', language);
-        res.json({ success: true });
+app.get('/logout', (req, res) => {
+    console.log('GET /logout - Logging out');
+    req.session.destroy(err => {
+        if (err) console.error('GET /logout - Error destroying session:', err);
+        res.clearCookie('connect.sid'); // Adjust cookie name based on your session store
+        console.log('GET /logout - Session destroyed');
+        res.redirect('/');
     });
 });
 
-let userCount = 0;
-let connectedUsers = {};
-const MAX_USERS = 20;
+const connectedUsers = new Map();
 
-io.on('connection', (socket) => {
-    const session = socket.handshake.session;
-    console.log('Socket connection attempt - Session:', session);
-    if (!session || !session.user) {
-        console.warn('No session or user found for socket:', socket.id);
-        socket.emit('chat message', { username: 'System', text: 'Please log in to continue.', id: Date.now().toString() });
-        socket.disconnect();
-        return;
-    }
-
-    if (userCount >= MAX_USERS) {
-        socket.emit('chat message', { username: 'System', text: 'Server is full. Please try again later.', id: Date.now().toString() });
-        socket.disconnect();
-        return;
-    }
-
-    const username = session.user.username;
-    const userColor = session.user.color || '#1E90FF'; // Changed default color to blue
-    const userLanguage = session.user.language || 'en';
-    userCount++;
-    connectedUsers[socket.id] = { username, id: socket.id, color: userColor, language: userLanguage };
-    console.log('User connected:', username, 'Socket ID:', socket.id, 'userCount:', userCount);
-    io.emit('user count', userCount);
-    io.emit('user list', Object.values(connectedUsers));
-
-    // Load chat history on connection
-    loadChatHistory(socket);
-
-    socket.on('chat message', async (msg) => {
-        if (!msg || !msg.username || (!msg.text && !msg.image)) {
-            console.error('Invalid main chat message received:', msg);
-            return;
-        }
-        msg.language = connectedUsers[socket.id]?.language || 'en';
-        msg.isDM = false;
-        msg.messageId = msg.id.toString(); // Ensure messageId is a string
-        console.log('Broadcasting main chat message from:', msg.username, 'Message:', msg);
-        io.emit('chat message', msg);
-        await saveChatMessage(msg, socket);
+io.on('connection', socket => {
+    console.log(`Socket connected: ${socket.id}`);
+    socket.on('chat message', msg => {
+        console.log(`Broadcasting main chat message: ${JSON.stringify(msg)}`);
+        io.emit('chat message', { ...msg, senderId: socket.id });
     });
 
-    socket.on('dm message', async (msg) => {
-        if (!msg || !msg.username || !msg.recipientId || (!msg.text && !msg.image)) {
-            console.error('Invalid DM received:', msg);
-            return;
-        }
-        msg.language = connectedUsers[socket.id]?.language || 'en';
-        msg.isDM = true;
-        msg.senderId = socket.id;
-        msg.messageId = msg.id.toString(); // Ensure messageId is a string
-        const recipientSocket = Object.keys(connectedUsers).find(id => id === msg.recipientId);
+    socket.on('dm message', msg => {
+        const recipientSocket = connectedUsers.get(msg.recipientId);
+        console.log(`Sending DM from ${socket.id} to ${msg.recipientId}: ${JSON.stringify(msg)}`);
+        socket.emit('dm message', { ...msg, senderId: socket.id });
         if (recipientSocket) {
-            console.log('Sending DM from:', msg.username, 'to:', msg.recipientId, 'Message:', msg);
-            io.to(msg.recipientId).emit('dm message', msg);
-            socket.emit('dm message', msg); // Echo back to sender
-            await saveChatMessage(msg, socket, msg.recipientId);
-        } else {
-            console.error('Recipient not found for DM:', msg.recipientId);
-            socket.emit('chat message', { username: 'System', text: 'Recipient is offline.', id: Date.now().toString() });
+            recipientSocket.emit('dm message', { ...msg, senderId: socket.id });
         }
     });
 
-    socket.on('typing', (username) => {
-        if (username) {
-            console.log('Typing event from:', username);
-            socket.broadcast.emit('typing', username);
-        } else {
-            console.error('No username provided for typing event');
-        }
+    socket.on('typing', username => {
+        console.log(`${username} is typing`);
+        socket.broadcast.emit('typing', username);
     });
 
     socket.on('stop typing', () => {
@@ -307,136 +124,53 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('stop typing');
     });
 
-    socket.on('name change', (data) => {
-        if (data && data.oldUsername && data.newUsername && data.id) {
-            if (connectedUsers[data.id]) {
-                connectedUsers[data.id].username = data.newUsername;
-                console.log('Name changed:', data);
-                io.emit('name change', data);
-                io.emit('user list', Object.values(connectedUsers));
-            }
-        } else {
-            console.error('Invalid name change data:', data);
-        }
+    socket.on('name change', data => {
+        console.log(`Name change: ${data.oldUsername} to ${data.newUsername}`);
+        connectedUsers.set(socket.id, { ...connectedUsers.get(socket.id), username: data.newUsername });
+        io.emit('name change', data);
+        io.emit('user list', Array.from(connectedUsers.values()));
     });
 
-    socket.on('color change', (data) => {
-        if (data && data.id && data.color) {
-            if (connectedUsers[data.id]) {
-                connectedUsers[data.id].color = data.color;
-                console.log('Color changed:', data);
-                io.emit('user list', Object.values(connectedUsers));
-                io.emit('color change', data);
-            }
-        } else {
-            console.error('Invalid color change data:', data);
-        }
+    socket.on('color change', data => {
+        console.log(`Color change for ${data.id}: ${data.color}`);
+        connectedUsers.set(socket.id, { ...connectedUsers.get(socket.id), color: data.color });
+        io.emit('color change', data);
+        io.emit('user list', Array.from(connectedUsers.values()));
     });
 
     socket.on('disconnect', () => {
-        if (connectedUsers[socket.id]) {
-            const username = connectedUsers[socket.id].username;
-            userCount--;
-            delete connectedUsers[socket.id];
-            console.log('User disconnected:', username, 'Socket ID:', socket.id, 'userCount:', userCount);
-            io.emit('user list', Object.values(connectedUsers));
-            io.emit('user count', userCount);
-        }
+        console.log(`Socket disconnected: ${socket.id}`);
+        connectedUsers.delete(socket.id);
+        io.emit('user count', connectedUsers.size);
+        io.emit('user list', Array.from(connectedUsers.values()));
     });
 
-    socket.on('error', (error) => {
-        console.error('Socket error:', error.message);
-    });
+    const user = { id: socket.id, username: socket.handshake.query.username, color: socket.handshake.query.color };
+    connectedUsers.set(socket.id, user);
+    io.emit('user count', connectedUsers.size);
+    io.emit('user list', Array.from(connectedUsers.values()));
 });
 
-// Chat History Functions
-async function loadChatHistory(socket) {
-    const session = socket.handshake.session;
-    if (!session || !session.user) return;
-    const username = session.user.username;
-    console.log('Loading chat history for:', username);
-    try {
-        const history = await ChatHistory.findOne({ username });
-        if (history && history.messages.length > 0) {
-            console.log('Found chat history for:', username, 'Messages:', history.messages.length);
-            history.messages.forEach(msg => {
-                if (msg.isDM) {
-                    socket.emit('dm message', msg);
-                } else {
-                    socket.emit('chat message', msg);
-                }
-            });
-        } else {
-            console.log('No chat history found for:', username);
-        }
-    } catch (err) {
-        console.error('Error loading chat history:', err);
-    }
-}
+const session = require('express-session');
+const MongoDBStore = require('connect-mongodb-session')(session);
 
-async function saveChatMessage(msg, socket, recipientId = null) {
-    const session = socket.handshake.session;
-    if (!session || !session.user) {
-        console.error('No session found for saving message:', msg);
-        return;
-    }
-    const username = session.user.username;
-    try {
-        let history = await ChatHistory.findOne({ username, recipientId });
-        if (!history) {
-            history = new ChatHistory({ username, recipientId, messages: [] });
-        }
-        msg.timestamp = new Date();
-        // Ensure messageId is a string and use it directly
-        history.messages.push({
-            username: msg.username,
-            text: msg.text,
-            color: msg.color,
-            language: msg.language,
-            messageId: msg.messageId,
-            replyTo: msg.replyTo,
-            isDM: msg.isDM,
-            image: msg.image,
-            timestamp: msg.timestamp
-        });
-        await history.save();
-        console.log('Saved message for:', username, 'Recipient:', recipientId, 'Message:', msg);
-
-        // Save for recipient if DM
-        if (recipientId) {
-            let recipientHistory = await ChatHistory.findOne({ username: connectedUsers[recipientId]?.username, recipientId: socket.id });
-            if (!recipientHistory) {
-                recipientHistory = new ChatHistory({ username: connectedUsers[recipientId]?.username, recipientId: socket.id, messages: [] });
-            }
-            recipientHistory.messages.push({
-                username: msg.username,
-                text: msg.text,
-                color: msg.color,
-                language: msg.language,
-                messageId: msg.messageId,
-                replyTo: msg.replyTo,
-                isDM: msg.isDM,
-                image: msg.image,
-                timestamp: msg.timestamp
-            });
-            await recipientHistory.save();
-            console.log('Saved DM for recipient:', connectedUsers[recipientId]?.username);
-        }
-    } catch (err) {
-        console.error('Error saving chat message:', err);
-    }
-}
-
-// Listen on the port provided by Render
-const PORT = process.env.PORT;
-http.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+const store = new MongoDBStore({
+    uri: 'mongodb://localhost:27017/ulischat',
+    collection: 'sessions'
 });
 
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error.message);
+store.on('error', err => {
+    console.error('Session store error:', err);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+app.use(session({
+    secret: 'your-secret-key', // Replace with a secure secret
+    resave: false,
+    saveUninitialized: false,
+    store: store,
+    cookie: { maxAge: 2592000000 } // 30 days
+}));
+
+http.listen(process.env.PORT || 3000, () => {
+    console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
