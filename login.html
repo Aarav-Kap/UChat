@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - UlisChat</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Roboto', sans-serif;
             display: flex;
@@ -12,73 +16,120 @@
             align-items: center;
             height: 100vh;
             background: linear-gradient(135deg, #f5f7fa, #e0e5ec);
-            margin: 0;
+            color: #333;
+        }
+        #error-message {
+            display: none;
+            color: #e41b1b;
+            font-size: 1em;
+            padding: 10px;
+            text-align: center;
+            background: #ffe6e6;
+            border-bottom: 1px solid #e41b1b;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
         }
         .login-container {
             background: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            width: 300px;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
             text-align: center;
         }
-        h2 { margin-bottom: 20px; color: #333; }
-        input {
+        .login-container h2 {
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            color: #2f2f2f;
+        }
+        .login-container input, .login-container select {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             margin: 10px 0;
             border: 1px solid #ddd;
-            border-radius: 5px;
-            box-sizing: border-box;
+            border-radius: 6px;
+            font-size: 1em;
+            outline: none;
+            transition: border-color 0.2s;
         }
-        button {
+        .login-container input:focus, .login-container select:focus {
+            border-color: #1E90FF;
+        }
+        .login-container button {
             width: 100%;
-            padding: 10px;
-            background: #4ecdc4;
+            padding: 12px;
+            background: #1E90FF;
             color: white;
             border: none;
-            border-radius: 5px;
-            cursor: pointer;
+            border-radius: 6px;
             font-size: 1em;
+            cursor: pointer;
+            transition: background 0.2s;
         }
-        button:hover { background: #45b7aa; }
-        .register-link { margin-top: 10px; }
-        .register-link a { color: #4ecdc4; text-decoration: none; }
-        .register-link a:hover { text-decoration: underline; }
+        .login-container button:hover {
+            background: #45b7aa;
+        }
     </style>
 </head>
 <body>
+    <div id="error-message"></div>
     <div class="login-container">
-        <h2>Login</h2>
-        <form action="/login" method="post">
-            <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Login</button>
-        </form>
-        <div class="register-link">
-            Don't have an account? <a href="#" onclick="showRegister()">Register</a>
-        </div>
-        <div id="register-form" style="display: none;">
-            <form action="/register" method="post">
-                <input type="text" name="username" placeholder="Username" required>
-                <input type="password" name="password" placeholder="Password" required>
-                <button type="submit">Register</button>
-            </form>
-            <div><a href="#" onclick="showLogin()">Back to Login</a></div>
-        </div>
+        <h2>Login to UlisChat</h2>
+        <input type="text" id="username" placeholder="Username" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <select id="language">
+            <option value="en">English</option>
+            <option value="fr">French</option>
+            <option value="es">Spanish</option>
+            <option value="pt">Portuguese</option>
+            <option value="ru">Russian</option>
+            <option value="hi">Hindi</option>
+        </select>
+        <button onclick="login()">Login</button>
     </div>
+
     <script>
-        function showRegister() {
-            document.querySelector('form').style.display = 'none';
-            document.querySelector('.register-link').style.display = 'none';
-            document.getElementById('register-form').style.display = 'block';
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => errorDiv.style.display = 'none', 5000);
         }
-        function showLogin() {
-            document.querySelector('form').style.display = 'block';
-            document.querySelector('.register-link').style.display = 'block';
-            document.getElementById('register-form').style.display = 'none';
+
+        function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const language = document.getElementById('language').value;
+
+            fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, language }),
+                credentials: 'include'
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = '/';
+                    } else {
+                        showError(data.error || 'Login failed');
+                    }
+                })
+                .catch(err => {
+                    console.error('Login error:', err);
+                    showError('An error occurred during login');
+                });
         }
+
+        document.getElementById('username').addEventListener('keypress', e => {
+            if (e.key === 'Enter') login();
+        });
+        document.getElementById('password').addEventListener('keypress', e => {
+            if (e.key === 'Enter') login();
+        });
     </script>
-    <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'921d1a43bed26769',t:'MTc0MjIyMDkyOC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </body>
 </html>
