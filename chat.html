@@ -5,21 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UChat</title>
     <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js" defer></script>
 </head>
 <body>
     <div id="sidebar">
-        <h2 id="current-username"></h2>
-        <h3>Users Online: <span id="user-count">0</span></h3>
-        <ul id="user-list"></ul>
+        <h2 id="current-username">Welcome</h2>
         <button onclick="showColorPicker()">Change Color</button>
+        <button onclick="window.location.href='/logout'">Logout</button>
+        <button onclick="toggleMute()">Toggle Mute (Unmuted)</button>
         <select id="language-select" onchange="updateLanguage()">
             <option value="en">English</option>
             <option value="es">Spanish</option>
             <option value="fr">French</option>
             <option value="de">German</option>
+            <option value="zh">Chinese</option> <!-- Added Chinese -->
         </select>
-        <button onclick="toggleMute()">Toggle Mute (Unmuted)</button>
-        <button onclick="window.location.href='/logout'">Logout</button>
+        <h3>Users Online: <span id="user-count">0</span></h3>
+        <ul id="user-list"></ul>
     </div>
     <div id="chat-container">
         <div id="tabs">
@@ -30,18 +33,19 @@
         </div>
         <div id="dm-tabs"></div>
         <div id="typing-indicator"></div>
-        <div id="reply-container" style="display: none; margin-top: 10px;">
+        <div id="input-area">
+            <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+            <input type="file" id="image-input" accept="image/*">
+            <button onclick="sendMessage()">Send</button>
+            <button onclick="sendImage()">Send Image</button>
+        </div>
+        <div id="reply-container" style="display: none;">
             <p id="reply-preview"></p>
             <button onclick="cancelReply()">Cancel</button>
         </div>
-        <div id="input-area">
-            <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
-            <input type="file" id="image-input" accept="image/*" style="display: none;" onchange="sendImage()">
-            <button onclick="document.getElementById('image-input').click()">Image</button>
-            <button onclick="sendMessage()">Send</button>
-        </div>
     </div>
     <div id="color-picker-modal" style="display: none;">
+        <h3>Pick a Color</h3>
         <input type="color" id="color-picker">
         <button onclick="changeColor()">Apply</button>
         <button onclick="hideColorPicker()">Cancel</button>
@@ -57,8 +61,5 @@
     </div>
     <audio id="remote-audio" autoplay></audio>
     <audio id="notification-sound" src="notification.mp3"></audio>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="app.js"></script>
 </body>
 </html>
