@@ -3,7 +3,7 @@ const app = express();
 const http = require('http').Server(app);
 const io = require('socket.io')(http, {
     cors: {
-        origin: 'https://your-render-app-name.onrender.com', // Replace with your actual Render URL
+        origin: 'https://uchat-997p.onrender.com/chat', // Replace with your actual Render URL
         methods: ['GET', 'POST'],
         credentials: true,
     },
@@ -38,7 +38,7 @@ const sessionMiddleware = session({
     resave: false,
     saveUninitialized: false,
     store: store,
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, secure: false },
+    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, secure: false }, // Set secure: true if forcing HTTPS
 });
 app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname)));
@@ -115,13 +115,18 @@ app.get('/logout', (req, res) => {
 
 const connectedUsers = new Map();
 io.on('connection', async (socket) => {
+    console.log('New Socket.IO connection:', socket.id); // Debug log
     const session = socket.request.session;
-    if (!session.userId) return socket.disconnect(true);
+    if (!session.userId) {
+        console.log('No session, disconnecting:', socket.id);
+        return socket.disconnect(true);
+    }
     const user = await User.findById(session.userId);
     connectedUsers.set(socket.id, { id: socket.id, userId: user._id.toString(), username: user.username, color: user.color });
     io.emit('user list', Array.from(connectedUsers.values()));
 
     socket.on('chat message', (msg) => {
+        console.log('Chat message received:', msg); // Debug log
         msg.senderId = user._id.toString();
         io.emit('chat message', msg);
     });
@@ -189,6 +194,7 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('disconnect', () => {
+        console.log('Socket.IO disconnected:', socket.id); // Debug log
         connectedUsers.delete(socket.id);
         io.emit('user list', Array.from(connectedUsers.values()));
     });

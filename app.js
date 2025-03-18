@@ -1,6 +1,8 @@
 const socket = io('https://your-render-app-name.onrender.com', {
     withCredentials: true,
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'],
+    reconnection: true, // Try to reconnect if it fails
+    reconnectionAttempts: 5,
 });
 let username, userColor, userLanguage, userId, activeTab = 'main', dmTabs = {};
 let isMuted = false;
@@ -19,6 +21,14 @@ const configuration = {
     ]
 };
 
+socket.on('connect', () => {
+    console.log('Socket.IO connected:', socket.id);
+});
+
+socket.on('connect_error', (err) => {
+    console.error('Socket.IO connection error:', err.message);
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
     const response = await fetch('/user', { credentials: 'include' });
     if (!response.ok) return window.location.href = '/';
@@ -32,6 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 socket.on('user list', users => {
+    console.log('User list updated:', users); // Debug log
     const ul = document.getElementById('user-list');
     ul.innerHTML = users
         .filter(u => u.userId !== userId)
@@ -41,6 +52,7 @@ socket.on('user list', users => {
 });
 
 socket.on('chat message', msg => {
+    console.log('Received chat message:', msg); // Debug log
     handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
     playNotification();
 });
