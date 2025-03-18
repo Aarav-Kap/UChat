@@ -6,6 +6,7 @@
     <title>UChat</title>
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/emoji-picker-element@^1.0.0" type="module"></script> <!-- Emoji picker CDN -->
     <script src="app.js" defer></script>
 </head>
 <body>
@@ -19,7 +20,7 @@
             <option value="es">Spanish</option>
             <option value="fr">French</option>
             <option value="de">German</option>
-            <option value="zh">Chinese</option> <!-- Added Chinese -->
+            <option value="zh">Chinese</option>
         </select>
         <h3>Users Online: <span id="user-count">0</span></h3>
         <ul id="user-list"></ul>
@@ -35,9 +36,13 @@
         <div id="typing-indicator"></div>
         <div id="input-area">
             <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button onclick="toggleEmojiPicker()">😊</button> <!-- Emoji toggle button -->
             <input type="file" id="image-input" accept="image/*">
             <button onclick="sendMessage()">Send</button>
             <button onclick="sendImage()">Send Image</button>
+        </div>
+        <div id="emoji-picker-container" style="display: none; position: absolute; bottom: 60px; right: 10px;">
+            <emoji-picker></emoji-picker>
         </div>
         <div id="reply-container" style="display: none;">
             <p id="reply-preview"></p>

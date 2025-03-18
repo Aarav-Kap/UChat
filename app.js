@@ -39,6 +39,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     userId = data.userId;
     document.getElementById('current-username').textContent = `Welcome, ${username}`;
     document.getElementById('language-select').value = userLanguage;
+
+    // Emoji picker setup
+    const picker = document.querySelector('emoji-picker');
+    picker.addEventListener('emoji-click', event => {
+        const input = document.getElementById('message-input');
+        input.value += event.detail.unicode;
+        input.focus();
+        toggleEmojiPicker(); // Hide after selection
+    });
 });
 
 socket.on('user list', users => {
@@ -387,4 +396,9 @@ function playNotification() {
 function openFullImage(src) {
     const win = window.open('');
     win.document.write(`<img src="${src}" style="max-width: 100%; max-height: 100vh;">`);
+}
+
+function toggleEmojiPicker() {
+    const picker = document.getElementById('emoji-picker-container');
+    picker.style.display = picker.style.display === 'block' ? 'none' : 'block';
 }
