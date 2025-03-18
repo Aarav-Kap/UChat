@@ -53,9 +53,15 @@ const sessionMiddleware = session({
         httpOnly: true,
         path: '/' // Ensure cookie is available on all routes
     },
+    unset: 'destroy' // Ensure session is destroyed when unset
 });
 
+app.use((req, res, next) => {
+    console.log('Request received - Session:', req.session ? 'exists' : 'undefined', 'Session ID:', req.sessionID);
+    next();
+});
 app.use(express.static(path.join(__dirname))); // Serve static files from root
+app.use(sessionMiddleware);
 app.use(express.json()); // Parse JSON bodies
 
 // Apply session middleware to Socket.IO
@@ -65,19 +71,19 @@ io.use((socket, next) => {
 
 // Routes
 app.get('/', (req, res) => {
-    console.log('GET / - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie);
+    console.log('GET / - Session ID:', req.sessionID, 'User ID:', req.session?.userId || 'undefined', 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined');
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.get('/register', (req, res) => {
-    console.log('GET /register - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie);
+    console.log('GET /register - Session ID:', req.sessionID, 'User ID:', req.session?.userId || 'undefined', 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined');
     res.sendFile(path.join(__dirname, 'register.html'));
 });
 
 app.get('/chat', (req, res) => {
-    console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session.userId, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie);
-    if (!req.session.userId) {
-        console.log('No userId in session, redirecting to /');
+    console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session?.userId || 'undefined', 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined');
+    if (!req.session || !req.session.userId) {
+        console.log('No session or userId, redirecting to /');
         return res.redirect('/');
     }
     res.sendFile(path.join(__dirname, 'chat.html'));
@@ -89,7 +95,7 @@ app.post('/login', (req, res, next) => {
     next();
 }, async (req, res) => {
     const { username, password } = req.body;
-    console.log('POST /login - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie, 'Raw Body:', req.body);
+    console.log('POST /login - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined', 'Raw Body:', req.body);
     if (!username || username.length < 3 || !password || password.length < 3) {
         console.log('Validation failed: Username or password too short');
         return res.status(400).send(`
@@ -132,7 +138,7 @@ app.post('/register', (req, res, next) => {
     next();
 }, async (req, res) => {
     const { username, password } = req.body;
-    console.log('POST /register - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie, 'Raw Body:', req.body);
+    console.log('POST /register - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined', 'Raw Body:', req.body);
     if (!username || username.length < 3 || !password || password.length < 3) {
         return res.status(400).send(`
             <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
@@ -165,7 +171,7 @@ app.post('/register', (req, res, next) => {
 
 // Get user data
 app.get('/user', async (req, res) => {
-    if (!req.session.userId) {
+    if (!req.session || !req.session.userId) {
         return res.status(401).json({ error: 'Not logged in' });
     }
     try {
@@ -183,7 +189,7 @@ app.get('/user', async (req, res) => {
 // Change username
 app.post('/change-username', async (req, res) => {
     const { newUsername } = req.body;
-    if (!req.session.userId) {
+    if (!req.session || !req.session.userId) {
         return res.status(401).json({ error: 'Not logged in' });
     }
     if (!newUsername || newUsername.length < 3) {
@@ -207,7 +213,7 @@ app.post('/change-username', async (req, res) => {
 // Change color
 app.post('/change-color', async (req, res) => {
     const { color } = req.body;
-    if (!req.session.userId) {
+    if (!req.session || !req.session.userId) {
         return res.status(401).json({ error: 'Not logged in' });
     }
     try {
@@ -224,7 +230,7 @@ app.post('/change-color', async (req, res) => {
 // Update language
 app.post('/update-language', async (req, res) => {
     const { language } = req.body;
-    if (!req.session.userId) {
+    if (!req.session || !req.session.userId) {
         return res.status(401).json({ error: 'Not logged in' });
     }
     try {
