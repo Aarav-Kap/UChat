@@ -2,6 +2,7 @@ const socket = io();
 let username, userColor, userLanguage, userId, activeTab = 'main', dmTabs = {};
 let isMuted = false;
 let localStream, remoteStream, peerConnection;
+let replyingTo = null; // Track the message being replied to
 const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -138,20 +139,47 @@ function handleMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.senderId = msg.senderId;
+    div.dataset.messageId = msg.messageId || Date.now(); // Unique ID for replies
     div.style.setProperty('--username-color', msg.color);
-    div.innerHTML = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
+    
+    let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
+    if (msg.replyTo) {
+        const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
+        const repliedText = repliedMsg ? repliedMsg.querySelector('span:not(.username)').textContent : 'Message not found';
+        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
+        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
+    }
+    content += '<div class="message-content">';
     
     if (msg.language !== userLanguage) {
         fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.text)}&langpair=${msg.language}|${userLanguage}`)
             .then(res => res.json())
             .then(data => {
-                div.innerHTML += `<span>${data.responseData.translatedText}</span><div class="meta">(${msg.language}: ${msg.text})</div>`;
+                div.querySelector('.message-content').innerHTML += `<span>${data.responseData.translatedText}</span><div class="meta">(${msg.language}: ${msg.text})</div>`;
             });
     } else {
-        div.innerHTML += `<span>${msg.text}</span>`;
+        content += `<span>${msg.text}</span>`;
     }
+    content += `<button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
+    
+    div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
+}
+
+function startReply(messageId) {
+    replyingTo = messageId;
+    const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
+    const repliedUsername = repliedMsg.querySelector('.username').textContent;
+    const repliedText = repliedMsg.querySelector('.message-content span').textContent;
+    document.getElementById('reply-preview').textContent = `Replying to ${repliedUsername}: ${repliedText}`;
+    document.getElementById('reply-container').style.display = 'block';
+    document.getElementById('message-input').focus();
+}
+
+function cancelReply() {
+    replyingTo = null;
+    document.getElementById('reply-container').style.display = 'none';
 }
 
 function startDM(recipientId, recipientUsername) {
@@ -192,7 +220,19 @@ function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text) return;
-    const msg = { username, text, color: userColor, language: userLanguage, senderId: userId };
+    const msg = { 
+        username, 
+        text, 
+        color: userColor, 
+        language: userLanguage, 
+        senderId: userId, 
+        messageId: Date.now().toString() // Unique ID for each message
+    };
+    if (replyingTo) {
+        msg.replyTo = replyingTo;
+        replyingTo = null;
+        document.getElementById('reply-container').style.display = 'none';
+    }
     if (input.dataset.recipient) {
         msg.recipientId = input.dataset.recipient;
         socket.emit('dm message', msg);

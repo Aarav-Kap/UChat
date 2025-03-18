@@ -30,6 +30,10 @@
         </div>
         <div id="dm-tabs"></div>
         <div id="typing-indicator"></div>
+        <div id="reply-container" style="display: none; margin-top: 10px;">
+            <p id="reply-preview"></p>
+            <button onclick="cancelReply()">Cancel</button>
+        </div>
         <div id="input-area">
             <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
             <button onclick="sendMessage()">Send</button>

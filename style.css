@@ -149,6 +149,7 @@ body {
     border-radius: 3px;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
 .message.sent {
@@ -159,14 +160,14 @@ body {
     align-items: flex-start;
 }
 
-.message.sent span:not(.username) {
+.message.sent .message-content span:not(.username) {
     background-color: #7289da;
     padding: 5px 10px;
     border-radius: 3px;
     max-width: 70%;
 }
 
-.message.received span:not(.username) {
+.message.received .message-content span:not(.username) {
     background-color: #4f545c;
     padding: 5px 10px;
     border-radius: 3px;
@@ -177,6 +178,38 @@ body {
     color: var(--username-color);
     font-weight: bold;
     margin-bottom: 2px;
+}
+
+.message-content {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.reply-btn {
+    padding: 2px 5px;
+    font-size: 0.8em;
+    background-color: #5865f2;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.message:hover .reply-btn {
+    opacity: 1;
+}
+
+.reply-ref {
+    font-size: 0.9em;
+    color: #b9bbbe;
+    background-color: #2f3136;
+    padding: 2px 5px;
+    border-radius: 3px;
+    margin-bottom: 5px;
+    max-width: 70%;
 }
 
 .meta {
@@ -210,6 +243,30 @@ body {
 
 #input-area button:hover {
     background-color: #677bc4;
+}
+
+#reply-container {
+    background: #2f3136;
+    padding: 5px;
+    border-radius: 3px;
+}
+
+#reply-container p {
+    margin: 0;
+    color: #b9bbbe;
+}
+
+#reply-container button {
+    padding: 2px 5px;
+    background-color: #5865f2;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+#reply-container button:hover {
+    background-color: #4752c4;
 }
 
 #color-picker-modal, #call-modal, #call-interface {
