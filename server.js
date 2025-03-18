@@ -3,7 +3,7 @@ const app = express();
 const http = require('http').Server(app);
 const io = require('socket.io')(http, {
     cors: {
-        origin: 'https://your-render-app-name.onrender.com', // Replace with your Render URL after deployment
+        origin: 'https://your-render-app-name.onrender.com', // Replace with your actual Render URL
         methods: ['GET', 'POST'],
         credentials: true,
     },

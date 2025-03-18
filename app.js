@@ -1,12 +1,21 @@
-const socket = io();
+const socket = io('https://your-render-app-name.onrender.com', {
+    withCredentials: true,
+    transports: ['websocket', 'polling']
+});
 let username, userColor, userLanguage, userId, activeTab = 'main', dmTabs = {};
 let isMuted = false;
 let localStream, remoteStream, peerConnection;
 let replyingTo = null;
+let currentCallRecipient = null;
 const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        }
     ]
 };
 
@@ -70,6 +79,7 @@ socket.on('color change', data => {
 });
 
 socket.on('call-made', async data => {
+    currentCallRecipient = data.from;
     document.getElementById('call-status').textContent = `${data.fromUsername} is calling you...`;
     document.getElementById('call-modal').style.display = 'block';
 
@@ -110,6 +120,7 @@ socket.on('hang-up', () => {
 });
 
 async function callUser(recipientId) {
+    currentCallRecipient = recipientId;
     await setupPeerConnection(recipientId);
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
@@ -135,12 +146,15 @@ function endCall() {
     peerConnection = null;
     localStream = null;
     remoteStream = null;
+    currentCallRecipient = null;
     document.getElementById('call-interface').style.display = 'none';
     document.getElementById('remote-audio').srcObject = null;
 }
 
 function hangUp() {
-    socket.emit('hang-up', { to: Object.keys(dmTabs)[0] || '' });
+    if (currentCallRecipient) {
+        socket.emit('hang-up', { to: currentCallRecipient });
+    }
     endCall();
 }
 
@@ -282,7 +296,7 @@ function sendImage() {
     reader.onload = () => {
         const msg = { 
             username, 
-            image: reader.result, // Base64 encoded image
+            image: reader.result,
             color: userColor, 
             senderId: userId, 
             messageId: Date.now().toString()
@@ -298,7 +312,7 @@ function sendImage() {
         } else {
             socket.emit('image message', msg);
         }
-        fileInput.value = ''; // Reset input
+        fileInput.value = '';
     };
     reader.readAsDataURL(file);
 }
@@ -356,4 +370,9 @@ function toggleMute() {
 
 function playNotification() {
     if (!isMuted) document.getElementById('notification-sound').play();
+}
+
+function openFullImage(src) {
+    const win = window.open('');
+    win.document.write(`<img src="${src}" style="max-width: 100%; max-height: 100vh;">`);
 }
