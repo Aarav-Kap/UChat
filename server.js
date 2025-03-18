@@ -13,11 +13,20 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-// Connect to MongoDB
+// Connect to MongoDB with retry logic
 const mongoURI = process.env.MONGODB_URI || 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
-mongoose.connect(mongoURI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+const connectWithRetry = () => {
+    mongoose.connect(mongoURI, {
+        serverSelectionTimeoutMS: 5000,
+        heartbeatFrequencyMS: 10000,
+        maxPoolSize: 10
+    }).then(() => console.log('Connected to MongoDB'))
+      .catch(err => {
+          console.error('MongoDB connection error:', err.message);
+          setTimeout(connectWithRetry, 5000); // Retry every 5 seconds
+      });
+};
+connectWithRetry();
 
 // Define User Schema
 const userSchema = new mongoose.Schema({
@@ -41,23 +50,27 @@ store.on('createSession', (sessionId, session) => {
 });
 store.on('getSession', (sessionId, callback) => {
     console.log('Attempting to retrieve session:', sessionId);
+    store.get(sessionId, (err, session) => {
+        if (err) console.error('Error retrieving session:', err);
+        callback(err, session);
+    });
 });
 
 // Session middleware
 const sessionMiddleware = session({
-    name: 'connect.sid', // Explicitly set the cookie name
+    name: 'connect.sid',
     secret: process.env.SESSION_SECRET || 'UlisChatSecret2025',
     resave: false,
     saveUninitialized: false,
     store: store,
     cookie: { 
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production' ? true : false, // False for local HTTP
-        sameSite: 'lax', // Allow redirects
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        secure: process.env.NODE_ENV === 'production' ? 'auto' : false, // 'auto' for Render's proxy
+        sameSite: 'lax',
         httpOnly: true,
-        path: '/' // Ensure cookie is available on all routes
+        path: '/'
     },
-    unset: 'destroy' // Ensure session is destroyed when unset
+    unset: 'destroy'
 });
 
 // Middleware to log requests and cookies
@@ -65,16 +78,11 @@ app.use((req, res, next) => {
     console.log('Request received - Session:', req.session ? 'exists' : 'undefined', 'Session ID:', req.sessionID, 'Cookies:', req.headers.cookie);
     next();
 });
-app.use(express.static(path.join(__dirname))); // Serve static files from root
+app.use(express.static(path.join(__dirname)));
 app.use(sessionMiddleware);
-app.use(express.json()); // Parse JSON bodies
+app.use(express.json());
 
-// Apply session middleware to Socket.IO
-io.use((socket, next) => {
-    sessionMiddleware(socket.request, {}, next);
-});
-
-// Trust Render's proxy (important for HTTPS on Render)
+// Trust Render's proxy
 app.set('trust proxy', 1);
 
 // Routes
@@ -97,7 +105,7 @@ app.get('/chat', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));
 });
 
-// Login endpoint
+// Login endpoint with enhanced error handling
 app.post('/login', (req, res, next) => {
     console.log('Raw request body:', req.body);
     next();
@@ -111,7 +119,7 @@ app.post('/login', (req, res, next) => {
         `);
     }
     try {
-        const user = await User.findOne({ username });
+        const user = await User.findOne({ username }).lean();
         if (!user) {
             console.log('User not found:', username);
             return res.status(400).send(`
@@ -132,8 +140,7 @@ app.post('/login', (req, res, next) => {
                 return res.status(500).send('<p id="error" style="color: red;">Session save failed</p>');
             }
             console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
-            // Explicitly set the session cookie
-            res.setHeader('Set-Cookie', `connect.sid=s:${req.sessionID}.${store.sign(req.sessionID, process.env.SESSION_SECRET || 'UlisChatSecret2025')}; Path=/; HttpOnly; SameSite=Lax${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+            // Let express-session handle the cookie automatically
             res.redirect('/chat');
         });
     } catch (err) {
@@ -185,7 +192,7 @@ app.get('/user', async (req, res) => {
         return res.status(401).json({ error: 'Not logged in' });
     }
     try {
-        const user = await User.findById(req.session.userId);
+        const user = await User.findById(req.session.userId).lean();
         if (!user) {
             return res.status(401).json({ error: 'User not found' });
         }
