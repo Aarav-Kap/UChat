@@ -9,7 +9,7 @@
 <body>
     <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
         <h2>Login</h2>
-        <form id="login-form" action="/login" method="POST">
+        <form id="login-form">
             <input type="text" name="username" id="username" placeholder="Username" value="" required><br>
             <input type="password" name="password" id="password" placeholder="Password" required><br>
             <button type="submit">Login</button>
@@ -23,7 +23,10 @@
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+
             console.log('Sending login:', { username, password }); // Debug log
+
             try {
                 const response = await fetch('/login', {
                     method: 'POST',
@@ -31,16 +34,35 @@
                     body: JSON.stringify({ username, password }),
                     credentials: 'include' // Ensure cookies are sent
                 });
+
                 console.log('Response status:', response.status, 'Redirected:', response.redirected); // Debug log
-                if (response.redirected) {
-                    window.location.href = response.url;
-                } else if (response.status >= 400) {
-                    const data = await response.text();
-                    document.getElementById('error').innerHTML = data.includes('<p id="error"') ? data : 'Login failed';
+
+                if (response.ok) {
+                    // Handle successful login (e.g., redirect to chat)
+                    window.location.href = '/chat.html';
+                } else {
+                    // Handle server-side errors (e.g., invalid credentials)
+                    const data = await response.json(); // Try to parse as JSON
+                    errorDiv.textContent = data.error || 'Login failed. Please try again.';
+                    errorDiv.style.display = 'block';
+                    setTimeout(() => {
+                        errorDiv.style.display = 'none';
+                        errorDiv.textContent = '';
+                    }, 3000);
                 }
             } catch (err) {
+                // Handle network errors or other fetch failures
                 console.error('Login error:', err);
-                document.getElementById('error').textContent = 'Login failed: ' + err.message;
+                if (!navigator.onLine) {
+                    errorDiv.textContent = 'No internet connection. Please check your network and try again.';
+                } else {
+                    errorDiv.textContent = 'Unable to reach the server. Please try again later.';
+                }
+                errorDiv.style.display = 'block';
+                setTimeout(() => {
+                    errorDiv.style.display = 'none';
+                    errorDiv.textContent = '';
+                }, 3000);
             }
         });
     </script>

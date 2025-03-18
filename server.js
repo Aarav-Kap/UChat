@@ -51,16 +51,6 @@ const store = new MongoDBStore({
 });
 store.on('error', err => console.error('Session store error:', err));
 store.on('connected', () => console.log('Session store connected to MongoDB'));
-store.on('createSession', (sessionId, session) => {
-    console.log('Session created:', sessionId, 'Data:', session);
-});
-store.on('getSession', (sessionId, callback) => {
-    console.log('Attempting to retrieve session:', sessionId);
-    store.get(sessionId, (err, session) => {
-        if (err) console.error('Error retrieving session:', err);
-        callback(err, session);
-    });
-});
 
 // Session middleware
 const sessionMiddleware = session({
@@ -71,7 +61,7 @@ const sessionMiddleware = session({
     store: store,
     cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production', // Use true for HTTPS on Render
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         httpOnly: true,
         path: '/',
@@ -79,17 +69,15 @@ const sessionMiddleware = session({
     unset: 'destroy',
 });
 
-// Middleware to log requests and cookies
+// Middleware
 app.use((req, res, next) => {
-    console.log('Request received - Session:', req.session ? 'exists' : 'undefined', 'Session ID:', req.sessionID, 'Cookies:', req.headers.cookie);
+    console.log(`Request: ${req.method} ${req.url} - Session ID: ${req.sessionID}, User ID: ${req.session?.userId || 'undefined'}`);
     next();
 });
 app.use(express.static(path.join(__dirname))); // Serve static files
-app.use(sessionMiddleware); // Apply session middleware
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
-
-// Trust Render's proxy
+app.use(sessionMiddleware);
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.set('trust proxy', 1);
 
 // Share session with Socket.IO
@@ -99,104 +87,82 @@ io.use((socket, next) => {
 
 // Routes
 app.get('/', (req, res) => {
-    console.log('GET / - Session ID:', req.sessionID, 'User ID:', req.session?.userId || 'undefined', 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined');
+    if (req.session.userId) {
+        return res.redirect('/chat');
+    }
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.get('/register', (req, res) => {
-    console.log('GET /register - Session ID:', req.sessionID, 'User ID:', req.session?.userId || 'undefined', 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined');
+    if (req.session.userId) {
+        return res.redirect('/chat');
+    }
     res.sendFile(path.join(__dirname, 'register.html'));
 });
 
 app.get('/chat', (req, res) => {
-    console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session?.userId || 'undefined', 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined');
     if (!req.session || !req.session.userId) {
-        console.log('No session or userId, redirecting to /');
         return res.redirect('/?error=unauthenticated');
     }
     res.sendFile(path.join(__dirname, 'chat.html'));
 });
 
-// Login endpoint with enhanced error handling
-app.post('/login', (req, res, next) => {
-    console.log('Raw request body:', req.body);
-    next();
-}, async (req, res) => {
+// Login endpoint with JSON responses
+app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    console.log('POST /login - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined', 'Raw Body:', req.body);
     if (!username || username.length < 3 || !password || password.length < 3) {
-        console.log('Validation failed: Username or password too short');
-        return res.status(400).send(`
-            <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
-        `);
+        return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     try {
         const user = await User.findOne({ username }).lean();
         if (!user) {
-            console.log('User not found:', username);
-            return res.status(400).send(`
-                <p id="error" style="color: red;">Invalid username or password</p>
-            `);
+            return res.status(400).json({ error: 'Invalid username or password' });
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            console.log('Password mismatch for user:', username);
-            return res.status(400).send(`
-                <p id="error" style="color: red;">Invalid username or password</p>
-            `);
+            return res.status(400).json({ error: 'Invalid username or password' });
         }
-        // Set session data
         req.session.userId = user._id.toString();
-        req.session.username = user.username; // Add username for Socket.IO
+        req.session.username = user.username;
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err);
-                return res.status(500).send('<p id="error" style="color: red;">Session save failed</p>');
+                return res.status(500).json({ error: 'Session save failed' });
             }
-            console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
-            res.redirect('/chat');
+            res.status(200).json({ success: true });
         });
     } catch (err) {
         console.error('Login error:', err);
-        res.status(500).send('<p id="error" style="color: red;">Server error</p>');
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
-// Register endpoint
-app.post('/register', (req, res, next) => {
-    console.log('Raw request body:', req.body);
-    next();
-}, async (req, res) => {
+// Register endpoint with JSON responses
+app.post('/register', async (req, res) => {
     const { username, password } = req.body;
-    console.log('POST /register - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined', 'Raw Body:', req.body);
     if (!username || username.length < 3 || !password || password.length < 3) {
-        return res.status(400).send(`
-            <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
-        `);
+        return res.status(400).json({ error: 'Username and password must be at least 3 characters long' });
     }
     try {
         const existingUser = await User.findOne({ username });
         if (existingUser) {
-            return res.status(400).send(`
-                <p id="error" style="color: red;">Username already exists</p>
-            `);
+            return res.status(400).json({ error: 'Username already exists' });
         }
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new User({ username, password: hashedPassword });
         await user.save();
         req.session.userId = user._id.toString();
-        req.session.username = user.username; // Add username for Socket.IO
+        req.session.username = user.username;
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err);
-                return res.status(500).send('<p id="error" style="color: red;">Session save failed</p>');
+                return res.status(500).json({ error: 'Session save failed' });
             }
-            console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
-            res.redirect('/chat');
+            res.status(200).json({ success: true });
         });
     } catch (err) {
         console.error('Register error:', err);
-        res.status(500).send('<p id="error" style="color: red;">Server error</p>');
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
@@ -234,7 +200,7 @@ app.post('/change-username', async (req, res) => {
         const user = await User.findById(req.session.userId);
         user.username = newUsername;
         await user.save();
-        req.session.username = newUsername; // Update session username
+        req.session.username = newUsername;
         res.json({ success: true });
     } catch (err) {
         console.error('Change username error:', err);
@@ -293,13 +259,11 @@ const connectedUsers = new Map();
 io.on('connection', async (socket) => {
     const session = socket.request.session;
     if (!session || !session.userId) {
-        console.log('No session or userId for socket connection, disconnecting');
         socket.disconnect(true);
         return;
     }
     const user = await User.findById(session.userId);
     if (!user) {
-        console.log('User not found for session, disconnecting');
         socket.disconnect(true);
         return;
     }
@@ -308,13 +272,18 @@ io.on('connection', async (socket) => {
     const existingSocket = Array.from(connectedUsers.entries()).find(([_, u]) => u.userId === user._id.toString());
     if (existingSocket) {
         connectedUsers.delete(existingSocket[0]);
-        console.log(`Removed old socket ${existingSocket[0]} for user ${username}`);
     }
     const socketUser = { id: socket.id, userId: user._id.toString(), username, color };
     connectedUsers.set(socket.id, socketUser);
     console.log(`User connected: ${username} (socket: ${socket.id}, userId: ${user._id})`);
 
     io.emit('user list', Array.from(connectedUsers.values()));
+    io.emit('chat message', {
+        username: 'System',
+        text: `${username} has joined the chat`,
+        language: 'en', // Fix translation error
+        id: Date.now().toString()
+    });
 
     socket.on('reconnect', async () => {
         const user = await User.findById(session.userId);
@@ -322,26 +291,37 @@ io.on('connection', async (socket) => {
             const existingSocket = Array.from(connectedUsers.entries()).find(([_, u]) => u.userId === user._id.toString());
             if (existingSocket) {
                 connectedUsers.delete(existingSocket[0]);
-                console.log(`Removed old socket ${existingSocket[0]} on reconnect for user ${user.username}`);
             }
             connectedUsers.set(socket.id, { id: socket.id, userId: user._id.toString(), username: user.username, color: user.color });
-            console.log(`User reconnected: ${user.username} (socket: ${socket.id}, userId: ${user._id})`);
             io.emit('user list', Array.from(connectedUsers.values()));
+            io.emit('chat message', {
+                username: 'System',
+                text: `${user.username} has reconnected`,
+                language: 'en',
+                id: Date.now().toString()
+            });
         }
     });
 
     socket.on('chat message', (msg) => {
         msg.id = Date.now().toString();
-        msg.senderId = socket.id;
+        msg.senderId = socketUser.userId;
         io.emit('chat message', msg);
     });
 
-    socket.on('call-user', data => {
-        const sender = Array.from(connectedUsers.values()).find(u => u.id === socket.id);
-        if (!sender) {
-            console.log('Sender not found in connectedUsers');
-            return;
+    socket.on('dm message', (msg) => {
+        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
+        if (recipient) {
+            const recipientSocket = io.sockets.sockets.get(recipient.id);
+            if (recipientSocket) {
+                recipientSocket.emit('dm message', msg);
+            }
         }
+        socket.emit('dm message', msg); // Echo back to sender
+    });
+
+    socket.on('call-user', data => {
+        const sender = connectedUsers.get(socket.id);
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
         if (recipient) {
             const recipientSocket = io.sockets.sockets.get(recipient.id);
@@ -351,7 +331,6 @@ io.on('connection', async (socket) => {
                     from: sender.userId,
                     fromUsername: sender.username,
                 });
-                console.log(`Call initiated from ${sender.username} to ${recipient.username}`);
             }
         }
     });
@@ -365,7 +344,6 @@ io.on('connection', async (socket) => {
                     answer: data.answer,
                     from: data.from,
                 });
-                console.log(`Answer sent from ${data.from} to ${recipient.userId}`);
             }
         }
     });
@@ -379,7 +357,6 @@ io.on('connection', async (socket) => {
                     candidate: data.candidate,
                     from: data.from,
                 });
-                console.log(`ICE candidate sent from ${data.from} to ${recipient.userId}`);
             }
         }
     });
@@ -390,7 +367,6 @@ io.on('connection', async (socket) => {
             const recipientSocket = io.sockets.sockets.get(recipient.id);
             if (recipientSocket) {
                 recipientSocket.emit('call-rejected', { from: data.from });
-                console.log(`Call rejected by ${data.from} to ${recipient.userId}`);
             }
         }
     });
@@ -401,7 +377,6 @@ io.on('connection', async (socket) => {
             const recipientSocket = io.sockets.sockets.get(recipient.id);
             if (recipientSocket) {
                 recipientSocket.emit('hang-up', { from: data.from });
-                console.log(`Hang-up from ${data.from} to ${recipient.userId}`);
             }
         }
     });
@@ -410,8 +385,8 @@ io.on('connection', async (socket) => {
         socket.broadcast.emit('typing', data);
     });
 
-    socket.on('stop typing', () => {
-        socket.broadcast.emit('stop typing');
+    socket.on('stop typing', data => {
+        socket.broadcast.emit('stop typing', data);
     });
 
     socket.on('name change', data => {
@@ -429,7 +404,12 @@ io.on('connection', async (socket) => {
     socket.on('disconnect', () => {
         const user = connectedUsers.get(socket.id);
         if (user) {
-            console.log(`User disconnected: ${user.username} (socket: ${socket.id}, userId: ${user.userId})`);
+            io.emit('chat message', {
+                username: 'System',
+                text: `${user.username} has left the chat`,
+                language: 'en',
+                id: Date.now().toString()
+            });
         }
         connectedUsers.delete(socket.id);
         io.emit('user list', Array.from(connectedUsers.values()));
@@ -439,7 +419,7 @@ io.on('connection', async (socket) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Server error:', err.stack);
-    res.status(500).send('Something went wrong!');
+    res.status(500).json({ error: 'Something went wrong!' });
 });
 
 const PORT = process.env.PORT || 10000;

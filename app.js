@@ -1,4 +1,4 @@
-const socket = io();
+const socket = io({ query: { userId: '' } }); // Will set userId after fetching user data
 let username = '', userColor = '#1E90FF', userLanguage = 'en', userId = '', activeTab = 'main', dmTabs = {}, replyTo = null;
 let isMuted = false;
 let localStream, remoteStream, peerConnection;
@@ -11,14 +11,19 @@ const configuration = {
 
 // Session check on page load
 document.addEventListener('DOMContentLoaded', async () => {
-    const response = await fetch('/user', {
-        method: 'GET',
-        credentials: 'include' // Include cookies
-    });
-    if (response.ok) {
-        initializeUser();
-    } else {
-        window.location.href = '/'; // Redirect to login if not authenticated
+    try {
+        const response = await fetch('/user', {
+            method: 'GET',
+            credentials: 'include'
+        });
+        if (response.ok) {
+            initializeUser();
+        } else {
+            window.location.href = '/login.html';
+        }
+    } catch (err) {
+        showError('Failed to connect to the server. Please check your internet connection and try again.');
+        setTimeout(() => window.location.href = '/login.html', 3000);
     }
 });
 
@@ -40,14 +45,16 @@ function initializeUser() {
             userColor = data.color;
             userLanguage = data.language;
             userId = data.userId;
+            socket.io.opts.query = { userId }; // Update socket query with userId
+            socket.connect(); // Reconnect socket with updated query
             document.getElementById('current-username').textContent = `Welcome, ${username}`;
             document.getElementById('language-select').value = userLanguage;
-            socket.emit('chat message', { username: 'System', text: `${username} has joined`, id: Date.now() });
+            socket.emit('chat message', { username: 'System', text: `${username} has joined`, language: 'en', id: Date.now().toString() });
             loadHistory();
         })
         .catch(err => {
             showError('Failed to load user data. Redirecting to login...');
-            setTimeout(() => window.location.href = '/', 1000);
+            setTimeout(() => window.location.href = '/login.html', 3000);
         });
 }
 
@@ -227,7 +234,7 @@ function handleMessage(msg, chat, isDM) {
     div.appendChild(usernameSpan);
 
     let text = msg.text || '';
-    if (msg.language !== userLanguage && text && !msg.image && !msg.video) {
+    if (msg.language && msg.language !== userLanguage && text && !msg.image && !msg.video) {
         fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${msg.language}|${userLanguage}`)
             .then(res => res.json())
             .then(data => {
@@ -248,7 +255,7 @@ function handleMessage(msg, chat, isDM) {
         div.insertAdjacentElement('afterbegin', reply);
     }
 
-    if (msg.language !== userLanguage && text && !msg.image && !msg.video) {
+    if (msg.language && msg.language !== userLanguage && text && !msg.image && !msg.video) {
         const orig = document.createElement('div');
         orig.className = 'meta';
         orig.textContent = `(${msg.language}: ${msg.text})`;
@@ -362,12 +369,12 @@ function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
     const recipientId = input.dataset.recipient || '';
-    const msg = { 
-        username, 
-        text, 
-        color: userColor, 
-        language: userLanguage, 
-        id: Date.now().toString(), 
+    const msg = {
+        username,
+        text,
+        color: userColor,
+        language: userLanguage,
+        id: Date.now().toString(),
         senderId: userId
     };
     if (replyTo) {
@@ -389,11 +396,11 @@ function sendMedia() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
-        const msg = { 
-            username, 
-            color: userColor, 
-            language: userLanguage, 
-            id: Date.now().toString(), 
+        const msg = {
+            username,
+            color: userColor,
+            language: userLanguage,
+            id: Date.now().toString(),
             senderId: userId
         };
         if (file.type.startsWith('image/')) {
@@ -440,7 +447,13 @@ function changeUsername() {
                 showError(data.error || 'Failed to change username');
             }
         })
-        .catch(err => showError('Error changing username'));
+        .catch(err => {
+            if (!navigator.onLine) {
+                showError('No internet connection. Please check your network and try again.');
+            } else {
+                showError('Error changing username');
+            }
+        });
     }
 }
 
@@ -461,17 +474,23 @@ function changeColor() {
         body: JSON.stringify({ color: newColor }),
         credentials: 'include'
     })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            userColor = newColor;
-            socket.emit('color change', { id: socket.id, color: newColor });
-            hideColorPicker();
-        } else {
-            showError(data.error || 'Failed to change color');
-        }
-    })
-    .catch(err => showError('Error changing color'));
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                userColor = newColor;
+                socket.emit('color change', { id: socket.id, color: newColor });
+                hideColorPicker();
+            } else {
+                showError(data.error || 'Failed to change color');
+            }
+        })
+        .catch(err => {
+            if (!navigator.onLine) {
+                showError('No internet connection. Please check your network and try again.');
+            } else {
+                showError('Error changing color');
+            }
+        });
 }
 
 function updateLanguage() {
@@ -482,11 +501,17 @@ function updateLanguage() {
         body: JSON.stringify({ language: userLanguage }),
         credentials: 'include'
     })
-    .then(res => res.json())
-    .then(data => {
-        if (!data.success) showError(data.error || 'Failed to update language');
-    })
-    .catch(err => showError('Error updating language'));
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) showError(data.error || 'Failed to update language');
+        })
+        .catch(err => {
+            if (!navigator.onLine) {
+                showError('No internet connection. Please check your network and try again.');
+            } else {
+                showError('Error updating language');
+            }
+        });
 }
 
 function setReply(msg) {

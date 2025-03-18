@@ -9,7 +9,7 @@
 <body>
     <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
         <h2>Register</h2>
-        <form id="register-form" action="/register" method="POST">
+        <form id="register-form">
             <input type="text" name="username" id="username" placeholder="Username" value="" required><br>
             <input type="password" name="password" id="password" placeholder="Password" required><br>
             <button type="submit">Register</button>
@@ -23,24 +23,43 @@
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            console.log('Sending registration:', { username, password }); // Debug log
+            const errorDiv = document.getElementById('error');
+
+            console.log('Sending registration:', { username, password });
+
             try {
                 const response = await fetch('/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password }),
-                    credentials: 'include' // Ensure cookies are sent
+                    credentials: 'include'
                 });
-                console.log('Response status:', response.status, 'Redirected:', response.redirected); // Debug log
-                if (response.redirected) {
-                    window.location.href = response.url;
-                } else if (response.status >= 400) {
-                    const data = await response.text();
-                    document.getElementById('error').innerHTML = data.includes('<p id="error"') ? data : 'Registration failed';
+
+                console.log('Response status:', response.status);
+
+                if (response.ok) {
+                    window.location.href = '/chat.html';
+                } else {
+                    const data = await response.json();
+                    errorDiv.textContent = data.error || 'Registration failed. Please try again.';
+                    errorDiv.style.display = 'block';
+                    setTimeout(() => {
+                        errorDiv.style.display = 'none';
+                        errorDiv.textContent = '';
+                    }, 3000);
                 }
             } catch (err) {
                 console.error('Registration error:', err);
-                document.getElementById('error').textContent = 'Registration failed: ' + err.message;
+                if (!navigator.onLine) {
+                    errorDiv.textContent = 'No internet connection. Please check your network and try again.';
+                } else {
+                    errorDiv.textContent = 'Unable to reach the server. Please try again later.';
+                }
+                errorDiv.style.display = 'block';
+                setTimeout(() => {
+                    errorDiv.style.display = 'none';
+                    errorDiv.textContent = '';
+                }, 3000);
             }
         });
     </script>

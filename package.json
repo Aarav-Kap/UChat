@@ -4,15 +4,15 @@
   "description": "A real-time chat application with DMs and calling",
   "main": "server.js",
   "scripts": {
-      "start": "node server.js"
+    "start": "node server.js"
   },
   "dependencies": {
-      "express": "^4.19.2",
-      "socket.io": "^4.7.5",
-      "express-session": "^1.18.0",
-      "connect-mongodb-session": "^3.1.1",
-      "mongoose": "^8.5.1",
-      "bcryptjs": "^2.4.3"
+    "bcryptjs": "^2.4.3",
+    "connect-mongodb-session": "^3.1.1",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "mongoose": "^8.12.1",
+    "socket.io": "^4.8.1"
   },
   "author": "Aarav",
   "license": "MIT"
