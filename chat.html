@@ -3,214 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat</title>
+    <title>Chat App</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div id="error-message" style="display: none; color: red; position: fixed; top: 10px; left: 50%; transform: translateX(-50%);"></div>
+    <div id="sidebar">
+        <h2 id="current-username"></h2>
+        <h3>Users Online: <span id="user-count">0</span></h3>
+        <ul id="user-list"></ul>
+        <button onclick="changeUsername()">Change Username</button>
+        <button onclick="showColorPicker()">Change Color</button>
+        <select id="language-select" onchange="updateLanguage()">
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+        </select>
+        <button onclick="toggleMute()">Toggle Mute (Unmuted)</button>
+        <button onclick="window.location.href='/logout'">Logout</button>
+    </div>
     <div id="chat-container">
-        <div id="sidebar">
-            <h2>Users</h2>
-            <ul id="user-list"></ul>
-            <button onclick="changeName()">Change Name</button>
-            <button onclick="changeColor()">Change Color</button>
-            <select id="language-select" onchange="updateLanguage()">
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-            </select>
-        </div>
         <div id="tabs">
-            <button class="tab-button active" data-tab="general">General</button>
+            <button class="tab-button active" data-tab="main" onclick="switchTab('main')">Main Chat</button>
         </div>
-        <div id="chat-area">
-            <div class="chat-area active" id="general"></div>
+        <div id="dm-tabs">
+            <div id="chat-area" class="chat-area active">
+                <div class="chat-content"></div>
+            </div>
         </div>
+        <div id="typing-indicator"></div>
         <div id="input-area">
-            <input type="text" id="message-input" placeholder="Type a message...">
+            <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
             <button onclick="sendMessage()">Send</button>
-            <input type="file" id="media-input" accept="image/*,video/*">
+            <input type="file" id="media-input" accept="image/*,video/*" onchange="sendMedia()">
             <label for="media-input">Media</label>
         </div>
-        <div id="call-modal" style="display: none;">
-            <h3>Incoming Call from <span id="caller-name"></span></h3>
-            <button id="accept-call">Accept</button>
-            <button id="decline-call">Decline</button>
-        </div>
-        <div id="call-interface" style="display: none;">
-            <button id="hang-up">Hang Up</button>
-        </div>
-        <p id="error-message" style="color: red; display: none;"></p>
-        <p id="typing-indicator"></p>
+    </div>
+
+    <!-- Call Modal -->
+    <div id="call-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.5); z-index: 1000;">
+        <p id="call-status"></p>
+        <button id="accept-call">Accept</button>
+        <button id="decline-call">Decline</button>
+    </div>
+
+    <!-- Call Interface -->
+    <div id="call-interface" style="display: none; position: fixed; top: 10px; right: 10px; background: #f0f0f0; padding: 10px; border-radius: 5px; z-index: 1000;">
+        <p id="call-with"></p>
+        <button onclick="hangUp()">Hang Up</button>
+    </div>
+
+    <!-- Audio Elements -->
+    <audio id="remote-audio" autoplay></audio>
+    <audio id="notification-sound" src="notification.mp3"></audio>
+
+    <div id="color-picker-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 10px;">
+        <input type="color" id="color-picker">
+        <button onclick="changeColor()">Apply</button>
+        <button onclick="hideColorPicker()">Cancel</button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
-        let localStream;
-        let peerConnection;
-
-        // Fetch user data
-        fetch('/user')
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) throw new Error(data.error);
-                document.querySelector('#user-list').innerHTML += `<li><span style="color: ${data.color}">${data.username}</span></li>`;
-            })
-            .catch(err => console.error('User data error:', err));
-
-        function sendMessage() {
-            const msg = document.getElementById('message-input').value;
-            if (msg) {
-                socket.emit('chat message', { text: msg, username: 'User', color: '#007bff', language: 'en' });
-                document.getElementById('message-input').value = '';
-            }
-        }
-
-        socket.on('chat message', (msg) => {
-            const chatArea = document.getElementById('general');
-            const div = document.createElement('div');
-            div.className = `message ${msg.senderId === socket.id ? 'sent' : 'received'}`;
-            div.innerHTML = `<span class="username" style="color: ${msg.color}">${msg.username}</span>${msg.text}<span class="meta" onclick="replyTo('${msg.id}')">Reply</span>`;
-            if (msg.replyTo) {
-                const replyDiv = document.createElement('div');
-                replyDiv.className = 'reply-context';
-                replyDiv.innerHTML = `<span class="reply-username">${msg.replyTo.username}</span>: <span class="reply-text">${msg.replyTo.text}</span>`;
-                div.appendChild(replyDiv);
-            }
-            chatArea.appendChild(div);
-            chatArea.scrollTop = chatArea.scrollHeight;
-        });
-
-        socket.on('user list', (users) => {
-            const userList = document.getElementById('user-list');
-            userList.innerHTML = '';
-            users.forEach(user => {
-                userList.innerHTML += `<li><span style="color: ${user.color}">${user.username}</span><button onclick="callUser('${user.userId}')">Call</button></li>`;
-            });
-        });
-
-        function changeName() {
-            const newName = prompt('Enter new username (min 3 chars):');
-            if (newName && newName.length >= 3) socket.emit('name change', { newUsername: newName });
-        }
-
-        function changeColor() {
-            const newColor = prompt('Enter new color (e.g., #RRGGBB):');
-            if (newColor) socket.emit('color change', { color: newColor });
-        }
-
-        function updateLanguage() {
-            const language = document.getElementById('language-select').value;
-            socket.emit('update-language', { language });
-        }
-
-        socket.on('typing', (data) => {
-            document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
-        });
-
-        socket.on('stop typing', () => {
-            document.getElementById('typing-indicator').textContent = '';
-        });
-
-        document.getElementById('message-input').addEventListener('input', () => {
-            socket.emit('typing', { username: 'User' });
-            clearTimeout(window.typingTimeout);
-            window.typingTimeout = setTimeout(() => socket.emit('stop typing'), 2000);
-        });
-
-        function replyTo(messageId) {
-            const replyTo = document.querySelector(`[onclick="replyTo('${messageId}')"]`).parentElement;
-            const username = replyTo.querySelector('.username').textContent;
-            const text = replyTo.querySelector('.username').nextSibling.textContent;
-            document.getElementById('message-input').value = `Replying to ${username}: ${text}\n`;
-        }
-
-        async function callUser(userId) {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localStream = stream;
-            peerConnection = new RTCPeerConnection();
-            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('ice-candidate', { candidate: event.candidate, to: userId });
-                }
-            };
-
-            peerConnection.ontrack = (event) => {
-                const video = document.createElement('video');
-                video.srcObject = event.streams[0];
-                video.autoplay = true;
-                document.body.appendChild(video);
-            };
-
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('call-user', { offer, to: userId });
-        }
-
-        socket.on('call-made', async (data) => {
-            document.getElementById('call-modal').style.display = 'block';
-            document.getElementById('caller-name').textContent = data.fromUsername;
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localStream = stream;
-            peerConnection = new RTCPeerConnection();
-            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('ice-candidate', { candidate: event.candidate, to: data.from });
-                }
-            };
-
-            peerConnection.ontrack = (event) => {
-                const video = document.createElement('video');
-                video.srcObject = event.streams[0];
-                video.autoplay = true;
-                document.body.appendChild(video);
-            };
-
-            document.getElementById('accept-call').onclick = async () => {
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                socket.emit('make-answer', { answer, to: data.from });
-                document.getElementById('call-modal').style.display = 'none';
-                document.getElementById('call-interface').style.display = 'block';
-            };
-
-            document.getElementById('decline-call').onclick = () => {
-                socket.emit('call-rejected', { to: data.from });
-                document.getElementById('call-modal').style.display = 'none';
-            };
-        });
-
-        socket.on('answer-made', async (data) => {
-            await peerConnection.setRemoteDescription(data.answer);
-            document.getElementById('call-interface').style.display = 'block';
-        });
-
-        socket.on('ice-candidate', (data) => {
-            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        });
-
-        socket.on('call-rejected', (data) => {
-            alert('Call rejected');
-            if (peerConnection) peerConnection.close();
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
-        });
-
-        document.getElementById('hang-up').onclick = () => {
-            socket.emit('hang-up', { to: peerConnection.remoteDescription ? peerConnection.remoteDescription.sdp.split('o=')[1].split(' ')[0] : null });
-            if (peerConnection) peerConnection.close();
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
-            document.getElementById('call-interface').style.display = 'none';
-        };
-
-        socket.on('hang-up', (data) => {
-            if (peerConnection) peerConnection.close();
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
-            document.getElementById('call-interface').style.display = 'none';
-        });
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
