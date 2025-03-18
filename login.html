@@ -10,12 +10,37 @@
     <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
         <h2>Login</h2>
         <form id="login-form" action="/login" method="POST">
-            <input type="text" name="username" id="username" placeholder="Username" required><br>
+            <input type="text" name="username" id="username" placeholder="Username" value="" required><br>
             <input type="password" name="password" id="password" placeholder="Password" required><br>
             <button type="submit">Login</button>
         </form>
         <p id="error" style="color: red;"></p>
         <p>Don't have an account? <a href="/register">Register</a></p>
     </div>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include' // Ensure cookies are sent
+                });
+                if (response.redirected) {
+                    window.location.href = response.url;
+                } else if (response.status >= 400) {
+                    const data = await response.text(); // Use text() for HTML error
+                    document.getElementById('error').innerHTML = data.includes('<p id="error"') ? data : 'Login failed';
+                }
+            } catch (err) {
+                console.error('Login error:', err);
+                document.getElementById('error').textContent = 'Login failed: ' + err.message;
+            }
+        });
+    </script>
 </body>
 </html>

@@ -38,6 +38,9 @@ const store = new MongoDBStore({
 });
 store.on('error', err => console.error('Session store error:', err));
 store.on('connected', () => console.log('Session store connected to MongoDB'));
+store.on('createSession', (sessionId, session) => {
+    console.log('Session created:', sessionId, 'Data:', session);
+});
 
 // Session middleware
 const sessionMiddleware = session({
@@ -90,27 +93,7 @@ app.post('/login', async (req, res) => {
     if (!username || username.length < 3 || !password || password.length < 3) {
         console.log('Validation failed: Username or password too short');
         return res.status(400).send(`
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Login</title>
-                <link rel="stylesheet" href="style.css">
-            </head>
-            <body>
-                <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
-                    <h2>Login</h2>
-                    <form id="login-form" action="/login" method="POST">
-                        <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
-                        <input type="password" name="password" id="password" placeholder="Password" required><br>
-                        <button type="submit">Login</button>
-                    </form>
-                    <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
-                    <p>Don't have an account? <a href="/register">Register</a></p>
-                </div>
-            </body>
-            </html>
+            <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
         `);
     }
     try {
@@ -118,68 +101,28 @@ app.post('/login', async (req, res) => {
         if (!user) {
             console.log('User not found:', username);
             return res.status(400).send(`
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Login</title>
-                    <link rel="stylesheet" href="style.css">
-                </head>
-                <body>
-                    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
-                        <h2>Login</h2>
-                        <form id="login-form" action="/login" method="POST">
-                            <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
-                            <input type="password" name="password" id="password" placeholder="Password" required><br>
-                            <button type="submit">Login</button>
-                        </form>
-                        <p id="error" style="color: red;">Invalid username or password</p>
-                        <p>Don't have an account? <a href="/register">Register</a></p>
-                    </div>
-                </body>
-                </html>
+                <p id="error" style="color: red;">Invalid username or password</p>
             `);
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             console.log('Password mismatch for user:', username);
             return res.status(400).send(`
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Login</title>
-                    <link rel="stylesheet" href="style.css">
-                </head>
-                <body>
-                    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
-                        <h2>Login</h2>
-                        <form id="login-form" action="/login" method="POST">
-                            <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
-                            <input type="password" name="password" id="password" placeholder="Password" required><br>
-                            <button type="submit">Login</button>
-                        </form>
-                        <p id="error" style="color: red;">Invalid username or password</p>
-                        <p>Don't have an account? <a href="/register">Register</a></p>
-                    </div>
-                </body>
-                </html>
+                <p id="error" style="color: red;">Invalid username or password</p>
             `);
         }
         req.session.userId = user._id.toString();
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err);
-                return res.status(500).send('Session save failed');
+                return res.status(500).send('<p id="error" style="color: red;">Session save failed</p>');
             }
             console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
             res.redirect('/chat');
         });
     } catch (err) {
         console.error('Login error:', err);
-        res.status(500).send('Server error');
+        res.status(500).send('<p id="error" style="color: red;">Server error</p>');
     }
 });
 
@@ -188,54 +131,14 @@ app.post('/register', async (req, res) => {
     const { username, password } = req.body;
     if (!username || username.length < 3 || !password || password.length < 3) {
         return res.status(400).send(`
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Register</title>
-                <link rel="stylesheet" href="style.css">
-            </head>
-            <body>
-                <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
-                    <h2>Register</h2>
-                    <form id="register-form" action="/register" method="POST">
-                        <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
-                        <input type="password" name="password" id="password" placeholder="Password" required><br>
-                        <button type="submit">Register</button>
-                    </form>
-                    <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
-                    <p>Already have an account? <a href="/">Login</a></p>
-                </div>
-            </body>
-            </html>
+            <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
         `);
     }
     try {
         const existingUser = await User.findOne({ username });
         if (existingUser) {
             return res.status(400).send(`
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Register</title>
-                    <link rel="stylesheet" href="style.css">
-                </head>
-                <body>
-                    <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
-                        <h2>Register</h2>
-                        <form id="register-form" action="/register" method="POST">
-                            <input type="text" name="username" id="username" placeholder="Username" value="${username || ''}" required><br>
-                            <input type="password" name="password" id="password" placeholder="Password" required><br>
-                            <button type="submit">Register</button>
-                        </form>
-                        <p id="error" style="color: red;">Username already exists</p>
-                        <p>Already have an account? <a href="/">Login</a></p>
-                    </div>
-                </body>
-                </html>
+                <p id="error" style="color: red;">Username already exists</p>
             `);
         }
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -245,14 +148,14 @@ app.post('/register', async (req, res) => {
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err);
-                return res.status(500).send('Session save failed');
+                return res.status(500).send('<p id="error" style="color: red;">Session save failed</p>');
             }
             console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
             res.redirect('/chat');
         });
     } catch (err) {
         console.error('Register error:', err);
-        res.status(500).send('Server error');
+        res.status(500).send('<p id="error" style="color: red;">Server error</p>');
     }
 });
 
