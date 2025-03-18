@@ -187,10 +187,15 @@ body {
 }
 
 .chat-image {
-    max-width: 200px;
-    max-height: 200px;
+    max-width: 400px; /* Increased from 200px */
+    max-height: 400px; /* Increased from 200px */
     border-radius: 5px;
     margin: 5px 0;
+    cursor: pointer; /* Clickable for full size */
+}
+
+.chat-image:hover {
+    opacity: 0.9; /* Subtle hover effect */
 }
 
 .reply-btn {
@@ -231,7 +236,7 @@ body {
 }
 
 #message-input {
-    width: 60%; /* Adjusted to fit image button */
+    width: 60%;
     padding: 5px;
     background-color: #40444b;
     color: white;

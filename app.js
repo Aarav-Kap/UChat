@@ -190,7 +190,7 @@ function handleImageMessage(msg, chat, isDM) {
         const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
         content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
+    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image" onclick="openFullImage('${msg.image}')"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
     
     div.innerHTML = content;
     chat.appendChild(div);
