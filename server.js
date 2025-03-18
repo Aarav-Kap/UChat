@@ -15,11 +15,9 @@ const path = require('path');
 
 // Connect to MongoDB
 const mongoURI = process.env.MONGODB_URI || 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
-mongoose.connect(mongoURI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+mongoose.connect(mongoURI)
+    .then(() => console.log('Connected to MongoDB'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
 // Define User Schema
 const userSchema = new mongoose.Schema({
@@ -57,8 +55,8 @@ const sessionMiddleware = session({
     },
 });
 
-app.use(express.static(path.join(__dirname)));
-app.use(express.urlencoded({ extended: true })); // For form submissions
+app.use(express.json()); // Parse JSON bodies
+app.use(express.urlencoded({ extended: true })); // Parse form-encoded bodies (optional)
 app.use(sessionMiddleware);
 
 // Apply session middleware to Socket.IO
