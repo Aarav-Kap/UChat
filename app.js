@@ -59,7 +59,6 @@ socket.on('color change', data => {
     });
 });
 
-// Voice Call Handlers
 socket.on('call-made', async data => {
     document.getElementById('call-status').textContent = `${data.fromUsername} is calling you...`;
     document.getElementById('call-modal').style.display = 'block';
@@ -131,7 +130,7 @@ function endCall() {
 }
 
 function hangUp() {
-    socket.emit('hang-up', { to: Object.keys(dmTabs)[0] || '' }); // Simplistic, assumes first DM tab
+    socket.emit('hang-up', { to: Object.keys(dmTabs)[0] || '' });
     endCall();
 }
 
@@ -182,7 +181,7 @@ function switchTab(tabId) {
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
     document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-    document.getElementById(tabId === 'main' ? 'chat-area' : tabId).className.add('active');
+    document.getElementById(tabId === 'main' ? 'chat-area' : tabId).classList.add('active');
     activeTab = tabId;
     const input = document.getElementById('message-input');
     input.dataset.recipient = tabId.startsWith('dm-') ? tabId.replace('dm-', '') : '';
@@ -247,7 +246,7 @@ function updateLanguage() {
 
 function getRecipientUsername(id) {
     const user = Array.from(document.querySelectorAll('#user-list li')).find(li => li.onclick.toString().includes(id));
-    return user ? user.textContent.split(' ')[0] : 'Unknown'; // Split to remove "Call" text
+    return user ? user.textContent.split(' ')[0] : 'Unknown';
 }
 
 function toggleMute() {

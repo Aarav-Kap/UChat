@@ -14,13 +14,11 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-// MongoDB Connection
 const mongoURI = 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 mongoose.connect(mongoURI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
-// User Schema
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -29,31 +27,27 @@ const userSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', userSchema);
 
-// Session Store
 const store = new MongoDBStore({
     uri: mongoURI,
     collection: 'sessions',
 });
 store.on('error', err => console.error('Session store error:', err));
 
-// Session Middleware
 const sessionMiddleware = session({
     secret: 'UlisChatSecret2025',
     resave: false,
     saveUninitialized: false,
     store: store,
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, secure: false }, // 30 days, secure false for local testing
+    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, secure: false },
 });
 app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname)));
 app.use(express.json());
 
-// Share session with Socket.IO
 io.use((socket, next) => {
     sessionMiddleware(socket.request, {}, next);
 });
 
-// Routes
 app.get('/', (req, res) => {
     if (req.session.userId) return res.redirect('/chat');
     res.sendFile(path.join(__dirname, 'login.html'));
@@ -119,7 +113,6 @@ app.get('/logout', (req, res) => {
     req.session.destroy(() => res.redirect('/'));
 });
 
-// Socket.IO Logic
 const connectedUsers = new Map();
 io.on('connection', async (socket) => {
     const session = socket.request.session;
@@ -147,7 +140,6 @@ io.on('connection', async (socket) => {
     socket.on('typing', (data) => socket.broadcast.emit('typing', data));
     socket.on('stop typing', (data) => socket.broadcast.emit('stop typing', data));
 
-    // Voice Call Signaling
     socket.on('call-user', (data) => {
         const sender = connectedUsers.get(socket.id);
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
