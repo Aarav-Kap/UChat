@@ -3,7 +3,7 @@ const app = express();
 const http = require('http').Server(app);
 const io = require('socket.io')(http, {
     cors: {
-        origin: 'https://uchat-997p.onrender.com/chat', // Replace with your actual Render URL
+        origin: 'https://uchat-997p.onrender.com', // Your Render base URL
         methods: ['GET', 'POST'],
         credentials: true,
     },
