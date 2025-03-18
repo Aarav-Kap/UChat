@@ -36,6 +36,8 @@
         </div>
         <div id="input-area">
             <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+            <input type="file" id="image-input" accept="image/*" style="display: none;" onchange="sendImage()">
+            <button onclick="document.getElementById('image-input').click()">Image</button>
             <button onclick="sendMessage()">Send</button>
         </div>
     </div>

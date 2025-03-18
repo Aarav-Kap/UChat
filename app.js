@@ -2,7 +2,7 @@ const socket = io();
 let username, userColor, userLanguage, userId, activeTab = 'main', dmTabs = {};
 let isMuted = false;
 let localStream, remoteStream, peerConnection;
-let replyingTo = null; // Track the message being replied to
+let replyingTo = null;
 const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -44,6 +44,15 @@ socket.on('dm message', msg => {
     }
     handleMessage(msg, dmTabs[partnerId].chat, true);
     playNotification();
+});
+
+socket.on('image message', msg => {
+    const partnerId = msg.recipientId ? (msg.senderId === userId ? msg.recipientId : msg.senderId) : null;
+    const chat = partnerId ? dmTabs[partnerId]?.chat : document.getElementById('chat-area').querySelector('.chat-content');
+    if (chat) {
+        handleImageMessage(msg, chat, !!partnerId);
+        playNotification();
+    }
 });
 
 socket.on('typing', data => {
@@ -139,13 +148,13 @@ function handleMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg.messageId || Date.now(); // Unique ID for replies
+    div.dataset.messageId = msg.messageId || Date.now();
     div.style.setProperty('--username-color', msg.color);
     
     let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('span:not(.username)').textContent : 'Message not found';
+        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt : 'Message not found';
         const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
         content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
     }
@@ -167,11 +176,32 @@ function handleMessage(msg, chat, isDM) {
     chat.scrollTop = chat.scrollHeight;
 }
 
+function handleImageMessage(msg, chat, isDM) {
+    const div = document.createElement('div');
+    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
+    div.dataset.senderId = msg.senderId;
+    div.dataset.messageId = msg.messageId || Date.now();
+    div.style.setProperty('--username-color', msg.color);
+    
+    let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
+    if (msg.replyTo) {
+        const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
+        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt : 'Message not found';
+        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
+        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
+    }
+    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
+    
+    div.innerHTML = content;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
 function startReply(messageId) {
     replyingTo = messageId;
     const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
     const repliedUsername = repliedMsg.querySelector('.username').textContent;
-    const repliedText = repliedMsg.querySelector('.message-content span').textContent;
+    const repliedText = repliedMsg.querySelector('.message-content span')?.textContent || repliedMsg.querySelector('img')?.alt || '';
     document.getElementById('reply-preview').textContent = `Replying to ${repliedUsername}: ${repliedText}`;
     document.getElementById('reply-container').style.display = 'block';
     document.getElementById('message-input').focus();
@@ -226,7 +256,7 @@ function sendMessage() {
         color: userColor, 
         language: userLanguage, 
         senderId: userId, 
-        messageId: Date.now().toString() // Unique ID for each message
+        messageId: Date.now().toString()
     };
     if (replyingTo) {
         msg.replyTo = replyingTo;
@@ -241,6 +271,36 @@ function sendMessage() {
     }
     input.value = '';
     socket.emit('stop typing', { tab: activeTab });
+}
+
+function sendImage() {
+    const fileInput = document.getElementById('image-input');
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        const msg = { 
+            username, 
+            image: reader.result, // Base64 encoded image
+            color: userColor, 
+            senderId: userId, 
+            messageId: Date.now().toString()
+        };
+        if (replyingTo) {
+            msg.replyTo = replyingTo;
+            replyingTo = null;
+            document.getElementById('reply-container').style.display = 'none';
+        }
+        if (document.getElementById('message-input').dataset.recipient) {
+            msg.recipientId = document.getElementById('message-input').dataset.recipient;
+            socket.emit('image message', msg);
+        } else {
+            socket.emit('image message', msg);
+        }
+        fileInput.value = ''; // Reset input
+    };
+    reader.readAsDataURL(file);
 }
 
 function handleTyping() {

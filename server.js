@@ -132,6 +132,17 @@ io.on('connection', async (socket) => {
         socket.emit('dm message', msg);
     });
 
+    socket.on('image message', (msg) => {
+        msg.senderId = user._id.toString();
+        if (msg.recipientId) {
+            const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
+            if (recipient) io.to(recipient.id).emit('image message', msg);
+            socket.emit('image message', msg);
+        } else {
+            io.emit('image message', msg);
+        }
+    });
+
     socket.on('color change', (data) => {
         connectedUsers.get(socket.id).color = data.color;
         io.emit('color change', data);

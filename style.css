@@ -186,6 +186,13 @@ body {
     gap: 5px;
 }
 
+.chat-image {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 5px;
+    margin: 5px 0;
+}
+
 .reply-btn {
     padding: 2px 5px;
     font-size: 0.8em;
@@ -224,7 +231,7 @@ body {
 }
 
 #message-input {
-    width: 70%;
+    width: 60%; /* Adjusted to fit image button */
     padding: 5px;
     background-color: #40444b;
     color: white;
