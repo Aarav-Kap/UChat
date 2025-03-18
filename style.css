@@ -1,319 +1,62 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
 body {
     font-family: Arial, sans-serif;
+    margin: 0;
     display: flex;
-    height: 100vh;
-    background-color: #f4f4f4;
 }
-
 #sidebar {
-    width: 250px;
-    background-color: #2c3e50;
-    color: white;
-    padding: 20px;
-    overflow-y: auto;
-}
-
-#sidebar h2 {
-    margin-bottom: 20px;
-}
-
-#sidebar h3 {
-    margin-bottom: 10px;
-}
-
-#user-list {
-    list-style: none;
-}
-
-#user-list li {
-    padding: 5px 0;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-}
-
-#user-list li:hover {
-    background-color: #34495e;
-}
-
-#user-list span {
-    flex-grow: 1;
-}
-
-#user-list button {
-    margin-left: 10px;
-    padding: 2px 5px;
-    background-color: #3498db;
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-}
-
-#user-list button:hover {
-    background-color: #2980b9;
-}
-
-#sidebar button, #sidebar select {
-    display: block;
-    width: 100%;
-    margin: 10px 0;
-    padding: 5px;
-    border: none;
-    border-radius: 3px;
-    background-color: #3498db;
-    color: white;
-    cursor: pointer;
-}
-
-#sidebar button:hover, #sidebar select:hover {
-    background-color: #2980b9;
-}
-
-#chat-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-}
-
-#tabs {
-    display: flex;
-    background-color: #ecf0f1;
-    padding: 5px;
-}
-
-.tab-button {
-    padding: 10px 20px;
-    border: none;
-    background: none;
-    cursor: pointer;
-    margin-right: 5px;
-    border-radius: 5px;
-}
-
-.tab-button.active {
-    background-color: #3498db;
-    color: white;
-}
-
-#dm-tabs, #chat-area {
-    flex: 1;
-    overflow-y: auto;
+    width: 200px;
     padding: 10px;
-    background-color: white;
+    background: #f4f4f4;
 }
-
+#chat-container {
+    flex-grow: 1;
+    padding: 10px;
+}
+.tab-button {
+    padding: 5px 10px;
+    margin-right: 5px;
+}
+.tab-button.active {
+    background: #ddd;
+}
 .chat-area {
     display: none;
 }
-
 .chat-area.active {
     display: block;
 }
-
 .chat-content {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.message {
-    margin: 10px;
+    height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
     padding: 10px;
-    border-radius: 10px;
-    max-width: 80%;
-    position: relative;
 }
-
+.message {
+    margin: 5px 0;
+}
 .message.sent {
-    background: linear-gradient(to right, #4facfe, #00f2fe);
-    align-self: flex-end;
-    color: white;
+    text-align: right;
 }
-
-.message.received {
-    background: #f1f0f0;
-    align-self: flex-start;
-    color: #333;
-}
-
-.username {
+.message .username {
+    color: var(--username-color);
     font-weight: bold;
-    margin-right: 5px;
 }
-
 .meta {
     font-size: 0.8em;
-    color: #4ecdc4;
-    cursor: pointer;
-    margin-left: 5px;
+    color: #777;
 }
-
-.reply-context {
-    background: #e0e0e0;
-    padding: 5px;
-    border-radius: 5px;
-    margin-bottom: 5px;
-    font-size: 0.9em;
-    color: #333;
-}
-
-.reply-username {
-    font-weight: bold;
-    color: #555;
-}
-
-.reply-text {
-    color: #333;
-}
-
-#typing-indicator {
-    font-size: 0.9em;
-    color: #7f8c8d;
-    padding: 5px 10px;
-}
-
 #input-area {
-    padding: 10px;
-    background-color: #ecf0f1;
-    display: flex;
-    gap: 5px;
+    margin-top: 10px;
 }
-
 #message-input {
-    flex: 1;
-    padding: 5px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
+    width: 70%;
 }
-
-#input-area button {
-    padding: 5px 10px;
-    background-color: #3498db;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-#input-area button:hover {
-    background-color: #2980b9;
-}
-
-#media-input {
-    display: none;
-}
-
-#media-input + label {
-    padding: 5px 10px;
-    background-color: #2ecc71;
-    color: white;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-#media-input + label:hover {
-    background-color: #27ae60;
-}
-
-#error-message {
-    z-index: 1000;
-}
-
-#call-modal {
+#color-picker-modal {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     background: white;
     padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.5);
-    z-index: 1000;
-}
-
-#call-interface {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    background: #f0f0f0;
-    padding: 10px;
-    border-radius: 5px;
-    z-index: 1000;
-}
-
-#call-modal button, #call-interface button {
-    padding: 5px 10px;
-    margin: 5px;
-    background-color: #3498db;
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-}
-
-#call-modal button:hover, #call-interface button:hover {
-    background-color: #2980b9;
-}
-
-#accept-call {
-    background-color: #2ecc71;
-}
-
-#accept-call:hover {
-    background-color: #27ae60;
-}
-
-#decline-call {
-    background-color: #e74c3c;
-}
-
-#decline-call:hover {
-    background-color: #c0392b;
-}
-
-@media (max-width: 600px) {
-    #sidebar {
-        width: 150px;
-    }
-    .message {
-        max-width: 90%;
-    }
-    #input-area {
-        flex-direction: column;
-    }
-    #input-area button, #media-input + label {
-        width: 100%;
-        margin-top: 5px;
-    }
-}
-
-/* Login page styles */
-form input {
-    display: block;
-    width: 100%;
-    margin: 10px 0;
-    padding: 5px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-}
-
-form button {
-    width: 100%;
-    padding: 5px;
-    background-color: #3498db;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-form button:hover {
-    background-color: #2980b9;
+    border: 1px solid #ccc;
 }

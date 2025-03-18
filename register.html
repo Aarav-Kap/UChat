@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register</title>
+    <title>UChat - Register</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div style="max-width: 400px; margin: 50px auto; padding: 20px; background: #f4f4f4; border-radius: 5px;">
-        <h2>Register</h2>
+        <h2>Register for UChat</h2>
         <form id="register-form">
-            <input type="text" name="username" id="username" placeholder="Username" value="" required><br>
-            <input type="password" name="password" id="password" placeholder="Password" required><br>
+            <input type="text" id="username" placeholder="Username" required><br>
+            <input type="password" id="password" placeholder="Password" required><br>
             <button type="submit">Register</button>
         </form>
         <p id="error" style="color: red;"></p>
@@ -25,8 +25,6 @@
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('error');
 
-            console.log('Sending registration:', { username, password });
-
             try {
                 const response = await fetch('/register', {
                     method: 'POST',
@@ -34,32 +32,16 @@
                     body: JSON.stringify({ username, password }),
                     credentials: 'include'
                 });
-
-                console.log('Response status:', response.status);
-
+                const data = await response.json();
                 if (response.ok) {
-                    window.location.href = '/chat.html';
+                    window.location.href = '/chat';
                 } else {
-                    const data = await response.json();
-                    errorDiv.textContent = data.error || 'Registration failed. Please try again.';
-                    errorDiv.style.display = 'block';
-                    setTimeout(() => {
-                        errorDiv.style.display = 'none';
-                        errorDiv.textContent = '';
-                    }, 3000);
+                    errorDiv.textContent = data.error || 'Registration failed';
+                    setTimeout(() => errorDiv.textContent = '', 3000);
                 }
             } catch (err) {
-                console.error('Registration error:', err);
-                if (!navigator.onLine) {
-                    errorDiv.textContent = 'No internet connection. Please check your network and try again.';
-                } else {
-                    errorDiv.textContent = 'Unable to reach the server. Please try again later.';
-                }
-                errorDiv.style.display = 'block';
-                setTimeout(() => {
-                    errorDiv.style.display = 'none';
-                    errorDiv.textContent = '';
-                }, 3000);
+                errorDiv.textContent = 'Server error';
+                setTimeout(() => errorDiv.textContent = '', 3000);
             }
         });
     </script>

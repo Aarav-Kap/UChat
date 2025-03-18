@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat App</title>
+    <title>UChat</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="error-message" style="display: none; color: red; position: fixed; top: 10px; left: 50%; transform: translateX(-50%);"></div>
     <div id="sidebar">
         <h2 id="current-username"></h2>
         <h3>Users Online: <span id="user-count">0</span></h3>
         <ul id="user-list"></ul>
-        <button onclick="changeUsername()">Change Username</button>
         <button onclick="showColorPicker()">Change Color</button>
         <select id="language-select" onchange="updateLanguage()">
             <option value="en">English</option>
@@ -35,33 +33,26 @@
         <div id="input-area">
             <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
             <button onclick="sendMessage()">Send</button>
-            <input type="file" id="media-input" accept="image/*,video/*" onchange="sendMedia()">
-            <label for="media-input">Media</label>
         </div>
     </div>
-
-    <!-- Call Modal -->
-    <div id="call-modal" style="display: none;">
-        <p id="call-status"></p>
-        <button id="accept-call">Accept</button>
-        <button id="decline-call">Decline</button>
-    </div>
-
-    <!-- Call Interface -->
-    <div id="call-interface" style="display: none;">
-        <p id="call-with"></p>
-        <button onclick="hangUp()">Hang Up</button>
-    </div>
-
-    <!-- Audio Elements -->
-    <audio id="remote-audio" autoplay></audio>
-    <audio id="notification-sound" src="notification.mp3"></audio>
-
     <div id="color-picker-modal" style="display: none;">
         <input type="color" id="color-picker">
         <button onclick="changeColor()">Apply</button>
         <button onclick="hideColorPicker()">Cancel</button>
     </div>
+    <!-- Call Modal -->
+    <div id="call-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 1px solid #ccc;">
+        <p id="call-status"></p>
+        <button id="accept-call">Accept</button>
+        <button id="decline-call">Decline</button>
+    </div>
+    <!-- Call Interface -->
+    <div id="call-interface" style="display: none; position: fixed; bottom: 10px; right: 10px; background: #f4f4f4; padding: 10px; border: 1px solid #ccc;">
+        <p id="call-with"></p>
+        <button onclick="hangUp()">Hang Up</button>
+    </div>
+    <audio id="remote-audio" autoplay></audio>
+    <audio id="notification-sound" src="notification.mp3"></audio>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="app.js"></script>
