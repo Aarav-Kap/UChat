@@ -5,7 +5,12 @@ const io = require('socket.io')(http, {
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000
+    reconnectionDelayMax: 5000,
+    cors: {
+        origin: process.env.NODE_ENV === 'production' ? 'https://uchat-997p.onrender.com' : 'http://localhost:10000',
+        methods: ['GET', 'POST'],
+        credentials: true,
+    },
 });
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
@@ -19,12 +24,13 @@ const connectWithRetry = () => {
     mongoose.connect(mongoURI, {
         serverSelectionTimeoutMS: 5000,
         heartbeatFrequencyMS: 10000,
-        maxPoolSize: 10
-    }).then(() => console.log('Connected to MongoDB'))
-      .catch(err => {
-          console.error('MongoDB connection error:', err.message);
-          setTimeout(connectWithRetry, 5000); // Retry every 5 seconds
-      });
+        maxPoolSize: 10,
+    })
+        .then(() => console.log('Connected to MongoDB'))
+        .catch(err => {
+            console.error('MongoDB connection error:', err.message);
+            setTimeout(connectWithRetry, 5000); // Retry every 5 seconds
+        });
 };
 connectWithRetry();
 
@@ -41,7 +47,7 @@ const User = mongoose.model('User', userSchema);
 const store = new MongoDBStore({
     uri: mongoURI,
     collection: 'sessions',
-    ttl: 30 * 24 * 60 * 60 // 30 days
+    ttl: 30 * 24 * 60 * 60, // 30 days
 });
 store.on('error', err => console.error('Session store error:', err));
 store.on('connected', () => console.log('Session store connected to MongoDB'));
@@ -63,14 +69,14 @@ const sessionMiddleware = session({
     resave: false,
     saveUninitialized: false,
     store: store,
-    cookie: { 
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        secure: process.env.NODE_ENV === 'production' ? 'auto' : false, // 'auto' for Render's proxy
+    cookie: {
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        secure: process.env.NODE_ENV === 'production', // Use true for HTTPS on Render
         sameSite: 'lax',
         httpOnly: true,
-        path: '/'
+        path: '/',
     },
-    unset: 'destroy'
+    unset: 'destroy',
 });
 
 // Middleware to log requests and cookies
@@ -78,12 +84,18 @@ app.use((req, res, next) => {
     console.log('Request received - Session:', req.session ? 'exists' : 'undefined', 'Session ID:', req.sessionID, 'Cookies:', req.headers.cookie);
     next();
 });
-app.use(express.static(path.join(__dirname)));
-app.use(sessionMiddleware);
-app.use(express.json());
+app.use(express.static(path.join(__dirname))); // Serve static files
+app.use(sessionMiddleware); // Apply session middleware
+app.use(express.json()); // Parse JSON bodies
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // Trust Render's proxy
 app.set('trust proxy', 1);
+
+// Share session with Socket.IO
+io.use((socket, next) => {
+    sessionMiddleware(socket.request, {}, next);
+});
 
 // Routes
 app.get('/', (req, res) => {
@@ -100,7 +112,7 @@ app.get('/chat', (req, res) => {
     console.log('GET /chat - Session ID:', req.sessionID, 'User ID:', req.session?.userId || 'undefined', 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session?.cookie || 'undefined');
     if (!req.session || !req.session.userId) {
         console.log('No session or userId, redirecting to /');
-        return res.redirect('/');
+        return res.redirect('/?error=unauthenticated');
     }
     res.sendFile(path.join(__dirname, 'chat.html'));
 });
@@ -133,14 +145,15 @@ app.post('/login', (req, res, next) => {
                 <p id="error" style="color: red;">Invalid username or password</p>
             `);
         }
+        // Set session data
         req.session.userId = user._id.toString();
+        req.session.username = user.username; // Add username for Socket.IO
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err);
                 return res.status(500).send('<p id="error" style="color: red;">Session save failed</p>');
             }
             console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
-            // Let express-session handle the cookie automatically
             res.redirect('/chat');
         });
     } catch (err) {
@@ -172,6 +185,7 @@ app.post('/register', (req, res, next) => {
         const user = new User({ username, password: hashedPassword });
         await user.save();
         req.session.userId = user._id.toString();
+        req.session.username = user.username; // Add username for Socket.IO
         req.session.save(err => {
             if (err) {
                 console.error('Session save error:', err);
@@ -220,6 +234,7 @@ app.post('/change-username', async (req, res) => {
         const user = await User.findById(req.session.userId);
         user.username = newUsername;
         await user.save();
+        req.session.username = newUsername; // Update session username
         res.json({ success: true });
     } catch (err) {
         console.error('Change username error:', err);
@@ -268,7 +283,7 @@ app.get('/logout', (req, res) => {
             console.error('Session destroy error:', err);
             return res.status(500).send('Logout failed');
         }
-        res.clearCookie('connect.sid');
+        res.clearCookie('connect.sid', { path: '/' });
         res.redirect('/');
     });
 });
@@ -278,11 +293,13 @@ const connectedUsers = new Map();
 io.on('connection', async (socket) => {
     const session = socket.request.session;
     if (!session || !session.userId) {
+        console.log('No session or userId for socket connection, disconnecting');
         socket.disconnect(true);
         return;
     }
     const user = await User.findById(session.userId);
     if (!user) {
+        console.log('User not found for session, disconnecting');
         socket.disconnect(true);
         return;
     }
@@ -332,7 +349,7 @@ io.on('connection', async (socket) => {
                 recipientSocket.emit('call-made', {
                     offer: data.offer,
                     from: sender.userId,
-                    fromUsername: sender.username
+                    fromUsername: sender.username,
                 });
                 console.log(`Call initiated from ${sender.username} to ${recipient.username}`);
             }
@@ -346,7 +363,7 @@ io.on('connection', async (socket) => {
             if (recipientSocket) {
                 recipientSocket.emit('answer-made', {
                     answer: data.answer,
-                    from: data.from
+                    from: data.from,
                 });
                 console.log(`Answer sent from ${data.from} to ${recipient.userId}`);
             }
@@ -360,7 +377,7 @@ io.on('connection', async (socket) => {
             if (recipientSocket) {
                 recipientSocket.emit('ice-candidate', {
                     candidate: data.candidate,
-                    from: data.from
+                    from: data.from,
                 });
                 console.log(`ICE candidate sent from ${data.from} to ${recipient.userId}`);
             }
@@ -417,6 +434,12 @@ io.on('connection', async (socket) => {
         connectedUsers.delete(socket.id);
         io.emit('user list', Array.from(connectedUsers.values()));
     });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Server error:', err.stack);
+    res.status(500).send('Something went wrong!');
 });
 
 const PORT = process.env.PORT || 10000;
