@@ -55,8 +55,8 @@ const sessionMiddleware = session({
     },
 });
 
-app.use(express.json()); // Parse JSON bodies first
-app.use(sessionMiddleware);
+app.use(express.static(path.join(__dirname))); // Serve static files from root
+app.use(express.json()); // Parse JSON bodies
 
 // Apply session middleware to Socket.IO
 io.use((socket, next) => {
@@ -84,7 +84,10 @@ app.get('/chat', (req, res) => {
 });
 
 // Login endpoint
-app.post('/login', async (req, res) => {
+app.post('/login', (req, res, next) => {
+    console.log('Raw request body:', req.body); // Log raw body
+    next();
+}, async (req, res) => {
     const { username, password } = req.body;
     console.log('POST /login - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie, 'Raw Body:', req.body);
     if (!username || username.length < 3 || !password || password.length < 3) {
@@ -124,7 +127,10 @@ app.post('/login', async (req, res) => {
 });
 
 // Register endpoint
-app.post('/register', async (req, res) => {
+app.post('/register', (req, res, next) => {
+    console.log('Raw request body:', req.body); // Log raw body
+    next();
+}, async (req, res) => {
     const { username, password } = req.body;
     console.log('POST /register - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie, 'Raw Body:', req.body);
     if (!username || username.length < 3 || !password || password.length < 3) {
@@ -152,8 +158,8 @@ app.post('/register', async (req, res) => {
             res.redirect('/chat');
         });
     } catch (err) {
-      console.error('Register error:', err);
-      res.status(500).send('<p id="error" style="color: red;">Server error</p>');
+        console.error('Register error:', err);
+        res.status(500).send('<p id="error" style="color: red;">Server error</p>');
     }
 });
 
