@@ -39,16 +39,20 @@ store.on('connected', () => console.log('Session store connected to MongoDB'));
 store.on('createSession', (sessionId, session) => {
     console.log('Session created:', sessionId, 'Data:', session);
 });
+store.on('getSession', (sessionId, callback) => {
+    console.log('Attempting to retrieve session:', sessionId);
+});
 
 // Session middleware
 const sessionMiddleware = session({
+    name: 'connect.sid', // Explicitly set the cookie name
     secret: process.env.SESSION_SECRET || 'UlisChatSecret2025',
     resave: false,
     saveUninitialized: false,
     store: store,
     cookie: { 
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production', // True on Render (HTTPS)
+        secure: process.env.NODE_ENV === 'production' ? true : false, // False for local HTTP
         sameSite: 'lax', // Allow redirects
         httpOnly: true,
         path: '/' // Ensure cookie is available on all routes
@@ -56,8 +60,9 @@ const sessionMiddleware = session({
     unset: 'destroy' // Ensure session is destroyed when unset
 });
 
+// Middleware to log requests and cookies
 app.use((req, res, next) => {
-    console.log('Request received - Session:', req.session ? 'exists' : 'undefined', 'Session ID:', req.sessionID);
+    console.log('Request received - Session:', req.session ? 'exists' : 'undefined', 'Session ID:', req.sessionID, 'Cookies:', req.headers.cookie);
     next();
 });
 app.use(express.static(path.join(__dirname))); // Serve static files from root
@@ -68,6 +73,9 @@ app.use(express.json()); // Parse JSON bodies
 io.use((socket, next) => {
     sessionMiddleware(socket.request, {}, next);
 });
+
+// Trust Render's proxy (important for HTTPS on Render)
+app.set('trust proxy', 1);
 
 // Routes
 app.get('/', (req, res) => {
@@ -91,7 +99,7 @@ app.get('/chat', (req, res) => {
 
 // Login endpoint
 app.post('/login', (req, res, next) => {
-    console.log('Raw request body:', req.body); // Log raw body
+    console.log('Raw request body:', req.body);
     next();
 }, async (req, res) => {
     const { username, password } = req.body;
@@ -124,6 +132,8 @@ app.post('/login', (req, res, next) => {
                 return res.status(500).send('<p id="error" style="color: red;">Session save failed</p>');
             }
             console.log('Session saved successfully for user:', username, 'User ID:', req.session.userId);
+            // Explicitly set the session cookie
+            res.setHeader('Set-Cookie', `connect.sid=s:${req.sessionID}.${store.sign(req.sessionID, process.env.SESSION_SECRET || 'UlisChatSecret2025')}; Path=/; HttpOnly; SameSite=Lax${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
             res.redirect('/chat');
         });
     } catch (err) {
@@ -134,7 +144,7 @@ app.post('/login', (req, res, next) => {
 
 // Register endpoint
 app.post('/register', (req, res, next) => {
-    console.log('Raw request body:', req.body); // Log raw body
+    console.log('Raw request body:', req.body);
     next();
 }, async (req, res) => {
     const { username, password } = req.body;
@@ -246,8 +256,14 @@ app.post('/update-language', async (req, res) => {
 
 // Logout
 app.get('/logout', (req, res) => {
-    req.session.destroy();
-    res.redirect('/');
+    req.session.destroy(err => {
+        if (err) {
+            console.error('Session destroy error:', err);
+            return res.status(500).send('Logout failed');
+        }
+        res.clearCookie('connect.sid');
+        res.redirect('/');
+    });
 });
 
 const connectedUsers = new Map();
@@ -290,35 +306,10 @@ io.on('connection', async (socket) => {
         }
     });
 
-    socket.on('chat message', msg => {
-        io.emit('chat message', { ...msg, senderId: socket.id });
-    });
-
-    socket.on('dm message', msg => {
-        const sender = Array.from(connectedUsers.values()).find(u => u.id === socket.id);
-        if (!sender) {
-            console.log('Sender not found in connectedUsers');
-            return;
-        }
-        console.log(`DM from ${sender.username} (socket: ${socket.id}, userId: ${sender.userId}) to recipientId: ${msg.recipientId}`);
-
-        socket.emit('dm message', { ...msg, senderId: sender.userId, recipientId: msg.recipientId });
-        console.log(`Emitted DM to sender ${sender.username} (socket: ${socket.id})`);
-
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
-        if (recipient) {
-            const recipientSocket = io.sockets.sockets.get(recipient.id);
-            if (recipientSocket && typeof recipientSocket.emit === 'function') {
-                recipientSocket.emit('dm message', { ...msg, senderId: sender.userId, recipientId: recipient.userId });
-                console.log(`Emitted DM to recipient ${recipient.username} (socket: ${recipient.id}, userId: ${recipient.userId})`);
-            } else {
-                console.log(`Recipient socket ${recipient.id} not active or function`);
-                socket.emit('dm message', { username: 'System', text: `Recipient is offline`, id: Date.now(), senderId: sender.userId });
-            }
-        } else {
-            console.log(`Recipient with userId ${msg.recipientId} not found in connected users`);
-            socket.emit('dm message', { username: 'System', text: `Recipient is offline`, id: Date.now(), senderId: sender.userId });
-        }
+    socket.on('chat message', (msg) => {
+        msg.id = Date.now().toString();
+        msg.senderId = socket.id;
+        io.emit('chat message', msg);
     });
 
     socket.on('call-user', data => {
@@ -395,8 +386,8 @@ io.on('connection', async (socket) => {
         socket.broadcast.emit('typing', data);
     });
 
-    socket.on('stop typing', data => {
-        socket.broadcast.emit('stop typing', data);
+    socket.on('stop typing', () => {
+        socket.broadcast.emit('stop typing');
     });
 
     socket.on('name change', data => {
@@ -421,7 +412,7 @@ io.on('connection', async (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 10000; // Match Render's detected port
+const PORT = process.env.PORT || 10000;
 http.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
