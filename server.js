@@ -7,6 +7,7 @@ const io = require('socket.io')(http, {
         methods: ['GET', 'POST'],
         credentials: true,
     },
+    maxHttpBufferSize: 1e7, // 10MB for audio messages
 });
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
@@ -145,6 +146,18 @@ io.on('connection', async (socket) => {
             socket.emit('image message', msg);
         } else {
             io.emit('image message', msg);
+        }
+    });
+
+    socket.on('audio message', (msg) => {
+        console.log('Audio message received:', msg);
+        msg.senderId = user._id.toString();
+        if (msg.recipientId) {
+            const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
+            if (recipient) io.to(recipient.id).emit('audio message', msg);
+            socket.emit('audio message', msg);
+        } else {
+            io.emit('audio message', msg);
         }
     });
 

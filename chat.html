@@ -6,7 +6,7 @@
     <title>UChat</title>
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://unpkg.com/emoji-picker-element@^1.0.0" type="module"></script> <!-- Emoji picker CDN -->
+    <script src="https://unpkg.com/emoji-picker-element@^1.0.0" type="module"></script>
     <script src="app.js" defer></script>
 </head>
 <body>
@@ -36,8 +36,9 @@
         <div id="typing-indicator"></div>
         <div id="input-area">
             <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
-            <button onclick="toggleEmojiPicker()">😊</button> <!-- Emoji toggle button -->
+            <button onclick="toggleEmojiPicker()">😊</button>
             <input type="file" id="image-input" accept="image/*">
+            <button id="record-btn" onclick="startRecording()">Record Audio</button>
             <button onclick="sendMessage()">Send</button>
             <button onclick="sendImage()">Send Image</button>
         </div>

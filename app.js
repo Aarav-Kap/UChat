@@ -6,7 +6,7 @@ const socket = io('https://uchat-997p.onrender.com', {
 });
 let username, userColor, userLanguage, userId, activeTab = 'main', dmTabs = {};
 let isMuted = false;
-let localStream, remoteStream, peerConnection;
+let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
 let replyingTo = null;
 let currentCallRecipient = null;
 const configuration = {
@@ -16,8 +16,13 @@ const configuration = {
         {
             urls: 'turn:openrelay.metered.ca:80',
             username: 'openrelayproject',
-            credential: 'openrelayproject'
-        }
+            credential: 'openrelayproject',
+        },
+        {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject',
+        },
     ]
 };
 
@@ -40,13 +45,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('current-username').textContent = `Welcome, ${username}`;
     document.getElementById('language-select').value = userLanguage;
 
-    // Emoji picker setup
     const picker = document.querySelector('emoji-picker');
     picker.addEventListener('emoji-click', event => {
         const input = document.getElementById('message-input');
         input.value += event.detail.unicode;
         input.focus();
-        toggleEmojiPicker(); // Hide after selection
+        toggleEmojiPicker();
     });
 });
 
@@ -85,6 +89,15 @@ socket.on('image message', msg => {
     }
 });
 
+socket.on('audio message', msg => {
+    const partnerId = msg.recipientId ? (msg.senderId === userId ? msg.recipientId : msg.senderId) : null;
+    const chat = partnerId ? dmTabs[partnerId]?.chat : document.getElementById('chat-area').querySelector('.chat-content');
+    if (chat) {
+        handleAudioMessage(msg, chat, !!partnerId);
+        playNotification();
+    }
+});
+
 socket.on('typing', data => {
     if (data.tab === activeTab) document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
 });
@@ -107,12 +120,17 @@ socket.on('call-made', async data => {
     document.getElementById('accept-call').onclick = async () => {
         document.getElementById('call-modal').style.display = 'none';
         await setupPeerConnection(data.from);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        socket.emit('make-answer', { answer, to: data.from });
-        document.getElementById('call-interface').style.display = 'block';
-        document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
+        try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('make-answer', { answer, to: data.from });
+            document.getElementById('call-interface').style.display = 'block';
+            document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
+        } catch (e) {
+            console.error('Error accepting call:', e);
+            endCall();
+        }
     };
 
     document.getElementById('decline-call').onclick = () => {
@@ -122,13 +140,25 @@ socket.on('call-made', async data => {
 });
 
 socket.on('answer-made', async data => {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-    document.getElementById('call-interface').style.display = 'block';
-    document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        document.getElementById('call-interface').style.display = 'block';
+        document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
+    } catch (e) {
+        console.error('Error setting answer:', e);
+        endCall();
+    }
 });
 
 socket.on('ice-candidate', async data => {
-    if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+    if (peerConnection && data.candidate) {
+        try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            console.log('ICE candidate added:', data.candidate);
+        } catch (e) {
+            console.error('Error adding ICE candidate:', e);
+        }
+    }
 });
 
 socket.on('call-rejected', () => {
@@ -143,20 +173,56 @@ socket.on('hang-up', () => {
 async function callUser(recipientId) {
     currentCallRecipient = recipientId;
     await setupPeerConnection(recipientId);
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    socket.emit('call-user', { offer, to: recipientId });
+    try {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        socket.emit('call-user', { offer, to: recipientId });
+    } catch (e) {
+        console.error('Error creating offer:', e);
+        endCall();
+    }
 }
 
 async function setupPeerConnection(recipientId) {
     peerConnection = new RTCPeerConnection(configuration);
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+        console.log('Added local track:', track);
+    });
     remoteStream = new MediaStream();
     document.getElementById('remote-audio').srcObject = remoteStream;
-    peerConnection.ontrack = event => event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+
+    peerConnection.ontrack = event => {
+        event.streams[0].getTracks().forEach(track => {
+            remoteStream.addTrack(track);
+            console.log('Added remote track:', track);
+        });
+    };
+
     peerConnection.onicecandidate = event => {
-        if (event.candidate) socket.emit('ice-candidate', { candidate: event.candidate, to: recipientId });
+        if (event.candidate) {
+            socket.emit('ice-candidate', { candidate: event.candidate, to: recipientId });
+            console.log('Sent ICE candidate:', event.candidate);
+        }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE state:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
+            endCall();
+        }
+    };
+
+    peerConnection.onnegotiationneeded = async () => {
+        console.log('Negotiation needed');
+        try {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('call-user', { offer, to: recipientId });
+        } catch (e) {
+            console.error('Negotiation error:', e);
+        }
     };
 }
 
@@ -170,6 +236,7 @@ function endCall() {
     currentCallRecipient = null;
     document.getElementById('call-interface').style.display = 'none';
     document.getElementById('remote-audio').srcObject = null;
+    console.log('Call ended');
 }
 
 function hangUp() {
@@ -189,7 +256,7 @@ function handleMessage(msg, chat, isDM) {
     let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt : 'Message not found';
+        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
         const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
         content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
     }
@@ -221,7 +288,7 @@ function handleImageMessage(msg, chat, isDM) {
     let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt : 'Message not found';
+        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
         const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
         content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
     }
@@ -232,11 +299,32 @@ function handleImageMessage(msg, chat, isDM) {
     chat.scrollTop = chat.scrollHeight;
 }
 
+function handleAudioMessage(msg, chat, isDM) {
+    const div = document.createElement('div');
+    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
+    div.dataset.senderId = msg.senderId;
+    div.dataset.messageId = msg.messageId || Date.now();
+    div.style.setProperty('--username-color', msg.color);
+    
+    let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
+    if (msg.replyTo) {
+        const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
+        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
+        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
+        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
+    }
+    content += `<div class="message-content"><audio controls src="${msg.audio}"></audio><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
+    
+    div.innerHTML = content;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
 function startReply(messageId) {
     replyingTo = messageId;
     const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
     const repliedUsername = repliedMsg.querySelector('.username').textContent;
-    const repliedText = repliedMsg.querySelector('.message-content span')?.textContent || repliedMsg.querySelector('img')?.alt || '';
+    const repliedText = repliedMsg.querySelector('.message-content span')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio';
     document.getElementById('reply-preview').textContent = `Replying to ${repliedUsername}: ${repliedText}`;
     document.getElementById('reply-container').style.display = 'block';
     document.getElementById('message-input').focus();
@@ -336,6 +424,55 @@ function sendImage() {
         fileInput.value = '';
     };
     reader.readAsDataURL(file);
+}
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+        mediaRecorder.onstop = sendAudioMessage;
+        mediaRecorder.start();
+        document.getElementById('record-btn').textContent = 'Stop Recording';
+        document.getElementById('record-btn').onclick = stopRecording;
+    } catch (e) {
+        console.error('Error starting recording:', e);
+        alert('Failed to access microphone. Please allow permissions.');
+    }
+}
+
+function stopRecording() {
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    document.getElementById('record-btn').textContent = 'Record Audio';
+    document.getElementById('record-btn').onclick = startRecording;
+}
+
+function sendAudioMessage() {
+    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+    const reader = new FileReader();
+    reader.onload = () => {
+        const msg = { 
+            username, 
+            audio: reader.result,
+            color: userColor, 
+            senderId: userId, 
+            messageId: Date.now().toString()
+        };
+        if (replyingTo) {
+            msg.replyTo = replyingTo;
+            replyingTo = null;
+            document.getElementById('reply-container').style.display = 'none';
+        }
+        if (document.getElementById('message-input').dataset.recipient) {
+            msg.recipientId = document.getElementById('message-input').dataset.recipient;
+            socket.emit('audio message', msg);
+        } else {
+            socket.emit('audio message', msg);
+        }
+    };
+    reader.readAsDataURL(blob);
 }
 
 function handleTyping() {

@@ -186,6 +186,10 @@ body {
     gap: 5px;
 }
 
+.message-content audio {
+    max-width: 300px;
+}
+
 .chat-image {
     max-width: 400px;
     max-height: 400px;
@@ -236,7 +240,7 @@ body {
 }
 
 #message-input {
-    width: 60%;
+    width: 50%;
     padding: 5px;
     background-color: #40444b;
     color: white;
