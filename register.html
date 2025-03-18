@@ -23,6 +23,7 @@
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
+            console.log('Sending registration:', { username, password }); // Debug log
             try {
                 const response = await fetch('/register', {
                     method: 'POST',
@@ -30,10 +31,11 @@
                     body: JSON.stringify({ username, password }),
                     credentials: 'include' // Ensure cookies are sent
                 });
+                console.log('Response status:', response.status, 'Redirected:', response.redirected); // Debug log
                 if (response.redirected) {
                     window.location.href = response.url;
                 } else if (response.status >= 400) {
-                    const data = await response.text(); // Use text() for HTML error
+                    const data = await response.text();
                     document.getElementById('error').innerHTML = data.includes('<p id="error"') ? data : 'Registration failed';
                 }
             } catch (err) {

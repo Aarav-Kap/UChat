@@ -55,8 +55,7 @@ const sessionMiddleware = session({
     },
 });
 
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse form-encoded bodies (optional)
+app.use(express.json()); // Parse JSON bodies first
 app.use(sessionMiddleware);
 
 // Apply session middleware to Socket.IO
@@ -87,7 +86,7 @@ app.get('/chat', (req, res) => {
 // Login endpoint
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    console.log('POST /login - Username:', username, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie);
+    console.log('POST /login - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie, 'Raw Body:', req.body);
     if (!username || username.length < 3 || !password || password.length < 3) {
         console.log('Validation failed: Username or password too short');
         return res.status(400).send(`
@@ -127,6 +126,7 @@ app.post('/login', async (req, res) => {
 // Register endpoint
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
+    console.log('POST /register - Username:', username, 'Password:', password, 'Session ID:', req.sessionID, 'Cookie:', req.headers.cookie, 'Session Cookie:', req.session.cookie, 'Raw Body:', req.body);
     if (!username || username.length < 3 || !password || password.length < 3) {
         return res.status(400).send(`
             <p id="error" style="color: red;">Username and password must be at least 3 characters long</p>
@@ -152,8 +152,8 @@ app.post('/register', async (req, res) => {
             res.redirect('/chat');
         });
     } catch (err) {
-        console.error('Register error:', err);
-        res.status(500).send('<p id="error" style="color: red;">Server error</p>');
+      console.error('Register error:', err);
+      res.status(500).send('<p id="error" style="color: red;">Server error</p>');
     }
 });
 
