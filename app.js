@@ -9,6 +9,7 @@ let isMuted = false;
 let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
 let replyingTo = null;
 let currentCallRecipient = null;
+let isCalling = false;
 const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -26,13 +27,8 @@ const configuration = {
     ]
 };
 
-socket.on('connect', () => {
-    console.log('Socket.IO connected:', socket.id);
-});
-
-socket.on('connect_error', (err) => {
-    console.error('Socket.IO connection error:', err.message);
-});
+socket.on('connect', () => console.log('Socket.IO connected:', socket.id));
+socket.on('connect_error', (err) => console.error('Socket.IO connection error:', err.message));
 
 document.addEventListener('DOMContentLoaded', async () => {
     const response = await fetch('/user', { credentials: 'include' });
@@ -52,20 +48,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         input.focus();
         toggleEmojiPicker();
     });
+
+    // Mobile menu toggle
+    document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('open');
+    });
 });
 
 socket.on('user list', users => {
-    console.log('User list updated:', users);
     const ul = document.getElementById('user-list');
     ul.innerHTML = users
         .filter(u => u.userId !== userId)
-        .map(u => `<li style="color: ${u.color}"><span onclick="startDM('${u.userId}', '${u.username}')">${u.username}</span> <button onclick="callUser('${u.userId}')">Call</button></li>`)
+        .map(u => `
+            <li class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-white" style="background-color: ${u.color}">
+                    ${u.username[0].toUpperCase()}
+                </div>
+                <span class="flex-1 cursor-pointer" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</span>
+                <button onclick="callUser('${u.userId}')" class="btn-icon"><i class="fas fa-phone"></i></button>
+            </li>
+        `)
         .join('');
     document.getElementById('user-count').textContent = users.length;
 });
 
 socket.on('chat message', msg => {
-    console.log('Received chat message:', msg);
     handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
     playNotification();
 });
@@ -113,12 +121,14 @@ socket.on('color change', data => {
 });
 
 socket.on('call-made', async data => {
+    if (isCalling) return;
     currentCallRecipient = data.from;
     document.getElementById('call-status').textContent = `${data.fromUsername} is calling you...`;
-    document.getElementById('call-modal').style.display = 'block';
+    document.getElementById('call-modal').style.display = 'flex';
 
     document.getElementById('accept-call').onclick = async () => {
         document.getElementById('call-modal').style.display = 'none';
+        isCalling = true;
         await setupPeerConnection(data.from);
         try {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -171,7 +181,9 @@ socket.on('hang-up', () => {
 });
 
 async function callUser(recipientId) {
+    if (isCalling) return;
     currentCallRecipient = recipientId;
+    isCalling = true;
     await setupPeerConnection(recipientId);
     try {
         const offer = await peerConnection.createOffer();
@@ -184,6 +196,7 @@ async function callUser(recipientId) {
 }
 
 async function setupPeerConnection(recipientId) {
+    if (peerConnection) endCall();
     peerConnection = new RTCPeerConnection(configuration);
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     localStream.getTracks().forEach(track => {
@@ -209,19 +222,8 @@ async function setupPeerConnection(recipientId) {
 
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
+        if (peerConnection.iceConnectionstate === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
             endCall();
-        }
-    };
-
-    peerConnection.onnegotiationneeded = async () => {
-        console.log('Negotiation needed');
-        try {
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('call-user', { offer, to: recipientId });
-        } catch (e) {
-            console.error('Negotiation error:', e);
         }
     };
 }
@@ -234,6 +236,7 @@ function endCall() {
     localStream = null;
     remoteStream = null;
     currentCallRecipient = null;
+    isCalling = false;
     document.getElementById('call-interface').style.display = 'none';
     document.getElementById('remote-audio').srcObject = null;
     console.log('Call ended');
@@ -253,7 +256,13 @@ function handleMessage(msg, chat, isDM) {
     div.dataset.messageId = msg.messageId || Date.now();
     div.style.setProperty('--username-color', msg.color);
     
-    let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
+    let content = `
+        <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs" style="background-color: ${msg.color}">
+                ${msg.username[0].toUpperCase()}
+            </div>
+            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+        </div>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
         const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
@@ -285,14 +294,20 @@ function handleImageMessage(msg, chat, isDM) {
     div.dataset.messageId = msg.messageId || Date.now();
     div.style.setProperty('--username-color', msg.color);
     
-    let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
+    let content = `
+        <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs" style="background-color: ${msg.color}">
+                ${msg.username[0].toUpperCase()}
+            </div>
+            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+        </div>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
         const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
         const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
         content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image" onclick="openFullImage('${msg.image}')"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
+    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
     
     div.innerHTML = content;
     chat.appendChild(div);
@@ -306,7 +321,13 @@ function handleAudioMessage(msg, chat, isDM) {
     div.dataset.messageId = msg.messageId || Date.now();
     div.style.setProperty('--username-color', msg.color);
     
-    let content = `<span class="username">${msg.username === username ? 'You' : msg.username}</span>`;
+    let content = `
+        <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs" style="background-color: ${msg.color}">
+                ${msg.username[0].toUpperCase()}
+            </div>
+            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+        </div>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
         const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
@@ -326,7 +347,7 @@ function startReply(messageId) {
     const repliedUsername = repliedMsg.querySelector('.username').textContent;
     const repliedText = repliedMsg.querySelector('.message-content span')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio';
     document.getElementById('reply-preview').textContent = `Replying to ${repliedUsername}: ${repliedText}`;
-    document.getElementById('reply-container').style.display = 'block';
+    document.getElementById('reply-container').style.display = 'flex';
     document.getElementById('message-input').focus();
 }
 
@@ -351,8 +372,8 @@ function createDMTab(recipientId, recipientUsername) {
 
     const dmTab = document.createElement('div');
     dmTab.id = `dm-${recipientId}`;
-    dmTab.className = 'chat-area';
-    dmTab.innerHTML = `<div class="chat-content"></div>`;
+    dmTab.className = 'chat-area flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto hidden';
+    dmTab.innerHTML = `<div class="chat-content flex flex-col space-y-2"></div>`;
     document.getElementById('dm-tabs').appendChild(dmTab);
 
     dmTabs[recipientId] = { chat: dmTab.querySelector('.chat-content'), button: tabBtn };
@@ -434,7 +455,7 @@ async function startRecording() {
         mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
         mediaRecorder.onstop = sendAudioMessage;
         mediaRecorder.start();
-        document.getElementById('record-btn').textContent = 'Stop Recording';
+        document.getElementById('record-btn').innerHTML = '<i class="fas fa-stop"></i>';
         document.getElementById('record-btn').onclick = stopRecording;
     } catch (e) {
         console.error('Error starting recording:', e);
@@ -445,7 +466,7 @@ async function startRecording() {
 function stopRecording() {
     mediaRecorder.stop();
     mediaRecorder.stream.getTracks().forEach(track => track.stop());
-    document.getElementById('record-btn').textContent = 'Record Audio';
+    document.getElementById('record-btn').innerHTML = '<i class="fas fa-microphone"></i>';
     document.getElementById('record-btn').onclick = startRecording;
 }
 
@@ -482,7 +503,7 @@ function handleTyping() {
 }
 
 function showColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'block';
+    document.getElementById('color-picker-modal').style.display = 'flex';
     document.getElementById('color-picker').value = userColor;
 }
 
@@ -523,7 +544,7 @@ function getRecipientUsername(id) {
 
 function toggleMute() {
     isMuted = !isMuted;
-    document.querySelector('#sidebar button:nth-child(3)').textContent = `Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
+    document.querySelector('#sidebar button:nth-child(3)').innerHTML = `<i class="fas fa-volume-${isMuted ? 'mute' : 'up'} mr-2"></i>Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
 }
 
 function playNotification() {
@@ -537,5 +558,5 @@ function openFullImage(src) {
 
 function toggleEmojiPicker() {
     const picker = document.getElementById('emoji-picker-container');
-    picker.style.display = picker.style.display === 'block' ? 'none' : 'block';
+    picker.classList.toggle('hidden');
 }

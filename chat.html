@@ -4,68 +4,91 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UChat</title>
-    <link rel="stylesheet" href="style.css">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/emoji-picker-element@^1.0.0" type="module"></script>
-    <script src="app.js" defer></script>
+    <script src="/app.js" defer></script>
 </head>
-<body>
-    <div id="sidebar">
-        <h2 id="current-username">Welcome</h2>
-        <button onclick="showColorPicker()">Change Color</button>
-        <button onclick="window.location.href='/logout'">Logout</button>
-        <button onclick="toggleMute()">Toggle Mute (Unmuted)</button>
-        <select id="language-select" onchange="updateLanguage()">
-            <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="zh">Chinese</option>
-        </select>
-        <h3>Users Online: <span id="user-count">0</span></h3>
-        <ul id="user-list"></ul>
-    </div>
-    <div id="chat-container">
-        <div id="tabs">
-            <button class="tab-button active" data-tab="main" onclick="switchTab('main')">Main Chat</button>
+<body class="bg-gray-900 text-white font-sans antialiased">
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <div id="sidebar" class="w-64 bg-gray-800 p-4 flex flex-col space-y-4 md:block hidden animate__animated animate__fadeInLeft">
+            <h2 id="current-username" class="text-xl font-bold text-indigo-400">Welcome</h2>
+            <button onclick="showColorPicker()" class="btn-primary"><i class="fas fa-palette mr-2"></i>Change Color</button>
+            <button onclick="window.location.href='/logout'" class="btn-secondary"><i class="fas fa-sign-out-alt mr-2"></i>Logout</button>
+            <button onclick="toggleMute()" class="btn-primary"><i class="fas fa-volume-mute mr-2"></i>Toggle Mute (Unmuted)</button>
+            <select id="language-select" onchange="updateLanguage()" class="bg-gray-700 text-white p-2 rounded">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="zh">Chinese</option>
+            </select>
+            <h3 class="text-indigo-400">Users Online: <span id="user-count">0</span></h3>
+            <ul id="user-list" class="space-y-2"></ul>
         </div>
-        <div id="chat-area" class="chat-area active">
-            <div class="chat-content"></div>
-        </div>
-        <div id="dm-tabs"></div>
-        <div id="typing-indicator"></div>
-        <div id="input-area">
-            <input type="text" id="message-input" placeholder="Type a message..." oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
-            <button onclick="toggleEmojiPicker()">😊</button>
-            <input type="file" id="image-input" accept="image/*">
-            <button id="record-btn" onclick="startRecording()">Record Audio</button>
-            <button onclick="sendMessage()">Send</button>
-            <button onclick="sendImage()">Send Image</button>
-        </div>
-        <div id="emoji-picker-container" style="display: none; position: absolute; bottom: 60px; right: 10px;">
-            <emoji-picker></emoji-picker>
-        </div>
-        <div id="reply-container" style="display: none;">
-            <p id="reply-preview"></p>
-            <button onclick="cancelReply()">Cancel</button>
+
+        <!-- Mobile Menu Button -->
+        <button id="mobile-menu-btn" class="md:hidden fixed top-4 left-4 z-50 text-indigo-400 text-2xl"><i class="fas fa-bars"></i></button>
+
+        <!-- Chat Container -->
+        <div id="chat-container" class="flex-1 flex flex-col p-4">
+            <div id="tabs" class="flex space-x-2 mb-4 overflow-x-auto">
+                <button class="tab-button active" data-tab="main" onclick="switchTab('main')">Main Chat</button>
+            </div>
+            <div id="chat-area" class="chat-area active flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto">
+                <div class="chat-content"></div>
+            </div>
+            <div id="dm-tabs" class="hidden"></div>
+            <div id="typing-indicator" class="text-gray-400 italic mt-2"></div>
+            <div id="input-area" class="mt-4 flex items-center space-x-2">
+                <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+                <button onclick="toggleEmojiPicker()" class="btn-icon"><i class="fas fa-smile"></i></button>
+                <input type="file" id="image-input" accept="image/*" class="hidden">
+                <button onclick="document.getElementById('image-input').click()" class="btn-icon"><i class="fas fa-image"></i></button>
+                <button id="record-btn" onclick="startRecording()" class="btn-icon"><i class="fas fa-microphone"></i></button>
+                <button onclick="sendMessage()" class="btn-primary"><i class="fas fa-paper-plane"></i></button>
+            </div>
+            <div id="emoji-picker-container" class="hidden absolute bottom-16 right-4 bg-gray-800 border border-gray-700 rounded-lg p-2">
+                <emoji-picker></emoji-picker>
+            </div>
+            <div id="reply-container" class="hidden bg-gray-700 p-2 rounded-lg mt-2 flex items-center space-x-2">
+                <p id="reply-preview" class="flex-1 text-gray-300"></p>
+                <button onclick="cancelReply()" class="btn-secondary">Cancel</button>
+            </div>
         </div>
     </div>
-    <div id="color-picker-modal" style="display: none;">
-        <h3>Pick a Color</h3>
-        <input type="color" id="color-picker">
-        <button onclick="changeColor()">Apply</button>
-        <button onclick="hideColorPicker()">Cancel</button>
+
+    <!-- Modals -->
+    <div id="color-picker-modal" class="modal hidden">
+        <div class="modal-content animate__animated animate__zoomIn">
+            <h3 class="text-indigo-400">Pick a Color</h3>
+            <input type="color" id="color-picker" class="w-full h-10 mt-2">
+            <div class="flex space-x-2 mt-4">
+                <button onclick="changeColor()" class="btn-primary">Apply</button>
+                <button onclick="hideColorPicker()" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
     </div>
-    <div id="call-modal" style="display: none;">
-        <p id="call-status"></p>
-        <button id="accept-call">Accept</button>
-        <button id="decline-call">Decline</button>
+    <div id="call-modal" class="modal hidden">
+        <div class="modal-content animate__animated animate__zoomIn">
+            <p id="call-status" class="text-indigo-400"></p>
+            <div class="flex space-x-2 mt-4">
+                <button id="accept-call" class="btn-primary">Accept</button>
+                <button id="decline-call" class="btn-secondary">Decline</button>
+            </div>
+        </div>
     </div>
-    <div id="call-interface" style="display: none;">
-        <p id="call-with"></p>
-        <button onclick="hangUp()">Hang Up</button>
+    <div id="call-interface" class="fixed bottom-4 right-4 bg-gray-800 p-4 rounded-lg hidden animate__animated animate__slideInUp">
+        <p id="call-with" class="text-indigo-400"></p>
+        <button onclick="hangUp()" class="btn-secondary mt-2">Hang Up</button>
     </div>
+
+    <!-- Audio Elements -->
     <audio id="remote-audio" autoplay></audio>
-    <audio id="notification-sound" src="notification.mp3"></audio>
+    <audio id="notification-sound" src="/notification.mp3"></audio>
 </body>
 </html>
