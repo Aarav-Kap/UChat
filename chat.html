@@ -18,8 +18,8 @@
         <div id="sidebar" class="w-64 bg-gray-800 p-4 flex flex-col space-y-4 md:block hidden animate__animated animate__fadeInLeft">
             <h2 id="current-username" class="text-xl font-bold text-indigo-400">Welcome</h2>
             <button onclick="showColorPicker()" class="btn-primary"><i class="fas fa-palette mr-2"></i>Change Color</button>
-            <button onclick="window.location.href='/logout'" class="btn-secondary"><i class="fas fa-sign-out-alt mr-2"></i>Logout</button>
-            <button onclick="toggleMute()" class="btn-primary"><i class="fas fa-volume-mute mr-2"></i>Toggle Mute (Unmuted)</button>
+            <button id="logout-btn" onclick="window.location.href='/logout'" class="btn-secondary"><i class="fas fa-sign-out-alt mr-2"></i>Logout</button>
+            <button onclick="toggleMute()" id="mute-btn" class="btn-primary"><i class="fas fa-volume-mute mr-2"></i>Toggle Mute (Unmuted)</button>
             <select id="language-select" onchange="updateLanguage()" class="bg-gray-700 text-white p-2 rounded">
                 <option value="en">English</option>
                 <option value="es">Spanish</option>
@@ -40,7 +40,7 @@
                 <button class="tab-button active" data-tab="main" onclick="switchTab('main')">Main Chat</button>
             </div>
             <div id="chat-area" class="chat-area active flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto">
-                <div class="chat-content"></div>
+                <div class="chat-content" style="color: white;"></div> <!-- Ensure text is visible -->
             </div>
             <div id="dm-tabs" class="hidden"></div>
             <div id="typing-indicator" class="text-gray-400 italic mt-2"></div>
@@ -55,8 +55,8 @@
             <div id="emoji-picker-container" class="hidden absolute bottom-16 right-4 bg-gray-800 border border-gray-700 rounded-lg p-2">
                 <emoji-picker></emoji-picker>
             </div>
-            <div id="reply-container" class="hidden bg-gray-700 p-2 rounded-lg mt-2 flex items-center space-x-2">
-                <p id="reply-preview" class="flex-1 text-gray-300"></p>
+            <div id="reply-container" class="hidden bg-gray-700 p-2 rounded-lg flex items-center space-x-2 mt-2 shadow-md">
+                <p id="reply-preview" class="text-sm text-gray-300 truncate"></p>
                 <button onclick="cancelReply()" class="btn-secondary">Cancel</button>
             </div>
         </div>

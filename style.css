@@ -13,7 +13,7 @@ body {
 }
 
 .btn-secondary {
-    @apply bg-gray-600 text-white px-4 py-1 rounded-lg hover:bg-gray-700 transition duration-200 flex items-center;
+    @apply bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition duration-200 flex items-center;
 }
 
 .btn-icon {
@@ -41,15 +41,15 @@ body {
 }
 
 .message {
-    @apply p-3 rounded-xl max-w-[75%] shadow-md animate__animated animate__fadeIn relative;
+    @apply p-3 rounded-xl max-w-[75%] shadow-md animate__animated animate__fadeIn bg-gray-700 text-white; /* Fixed white text issue */
 }
 
 .message.sent {
-    @apply ml-auto bg-indigo-600 text-white;
+    @apply ml-auto bg-indigo-600;
 }
 
 .message.received {
-    @apply mr-auto bg-gray-700 text-white;
+    @apply mr-auto;
 }
 
 .message .username {

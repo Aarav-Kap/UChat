@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     userId = data.userId;
     document.getElementById('current-username').textContent = `Welcome, ${username}`;
     document.getElementById('language-select').value = userLanguage;
+    document.getElementById('mute-btn').textContent = `Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
 
     const picker = document.querySelector('emoji-picker');
     picker.addEventListener('emoji-click', event => {
@@ -159,8 +160,10 @@ socket.on('answer-made', async data => {
     console.log('Received answer-made:', data);
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-        document.getElementById('call-interface').style.display = 'block';
-        document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
+        if (!document.getElementById('call-interface').style.display || document.getElementById('call-interface').style.display === 'none') {
+            document.getElementById('call-interface').style.display = 'block';
+            document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
+        }
     } catch (e) {
         console.error('Error setting answer:', e);
         endCall();
@@ -201,7 +204,8 @@ async function callUser(recipientId) {
     try {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
-        socket.emit('call-user', { offer, to: recipientId });
+        const sender = { userId: userId, username: username };
+        socket.emit('call-user', { offer, to: recipientId, from: sender.userId, fromUsername: sender.username });
         console.log('Sent call-user:', { offer, to: recipientId });
     } catch (e) {
         console.error('Error creating offer:', e);
@@ -397,7 +401,7 @@ function createDMTab(recipientId, recipientUsername) {
     const dmTab = document.createElement('div');
     dmTab.id = `dm-${recipientId}`;
     dmTab.className = 'chat-area flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto hidden';
-    dmTab.innerHTML = `<div class="chat-content flex flex-col space-y-2"></div>`;
+    dmTab.innerHTML = `<div class="chat-content flex flex-col space-y-2" style="color: white;"></div>`;
     document.getElementById('dm-tabs').appendChild(dmTab);
 
     dmTabs[recipientId] = { chat: dmTab.querySelector('.chat-content'), button: tabBtn };
@@ -545,10 +549,12 @@ function changeColor() {
     }).then(res => res.json()).then(data => {
         if (data.success) {
             userColor = newColor;
-            socket.emit('color change', { id: socket.id, color: newColor });
+            socket.emit('color change', { id: userId, color: newColor }); // Fixed to use userId
             hideColorPicker();
+        } else {
+            console.error('Color change failed:', data.error);
         }
-    });
+    }).catch(err => console.error('Error changing color:', err));
 }
 
 function updateLanguage() {
@@ -568,7 +574,13 @@ function getRecipientUsername(id) {
 
 function toggleMute() {
     isMuted = !isMuted;
-    document.querySelector('#sidebar button:nth-child(3)').innerHTML = `<i class="fas fa-volume-${isMuted ? 'mute' : 'up'} mr-2"></i>Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
+    const muteBtn = document.getElementById('mute-btn');
+    muteBtn.innerHTML = `<i class="fas fa-volume-${isMuted ? 'mute' : 'up'} mr-2"></i>Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
+    // Ensure logout button remains unaffected
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn.innerHTML !== '<i class="fas fa-sign-out-alt mr-2"></i>Logout') {
+        logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt mr-2"></i>Logout';
+    }
 }
 
 function playNotification() {
