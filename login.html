@@ -4,26 +4,46 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UChat - Login</title>
-    <link rel="stylesheet" href="style.css">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
 </head>
-<body>
-    <div class="auth-container">
-        <h2>Login to UChat</h2>
-        <form id="login-form">
-            <input type="text" id="username" placeholder="Username" required><br>
-            <input type="password" id="password" placeholder="Password" required><br>
-            <button type="submit">Login</button>
-        </form>
-        <p id="error" style="color: red;"></p>
-        <p>Don't have an account? <a href="/register">Register</a></p>
+<body class="bg-gray-900 text-white font-sans antialiased flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-md p-8 bg-gray-800 rounded-lg shadow-lg animate__animated animate__fadeIn">
+        <h2 class="text-3xl font-bold text-indigo-400 text-center mb-6">Welcome to UChat</h2>
+        <div id="error-message" class="hidden text-red-400 text-center mb-4"></div>
+        <div class="space-y-4">
+            <div>
+                <label for="username" class="block text-sm font-medium text-gray-300">Username</label>
+                <div class="relative">
+                    <i class="fas fa-user absolute left-3 top-3 text-gray-400"></i>
+                    <input type="text" id="username" class="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Enter username">
+                </div>
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-300">Password</label>
+                <div class="relative">
+                    <i class="fas fa-lock absolute left-3 top-3 text-gray-400"></i>
+                    <input type="password" id="password" class="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Enter password">
+                </div>
+            </div>
+            <button onclick="login()" class="w-full btn-primary"><i class="fas fa-sign-in-alt mr-2"></i>Login</button>
+            <p class="text-center text-gray-400">Don't have an account? <a href="/register" class="text-indigo-400 hover:underline">Register</a></p>
+        </div>
     </div>
 
     <script>
-        document.getElementById('login-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
+        async function login() {
+            const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('error');
+            const errorMessage = document.getElementById('error-message');
+
+            if (!username || !password) {
+                errorMessage.textContent = 'Please enter both username and password';
+                errorMessage.classList.remove('hidden');
+                return;
+            }
 
             try {
                 const response = await fetch('/login', {
@@ -33,16 +53,21 @@
                     credentials: 'include'
                 });
                 const data = await response.json();
-                if (response.ok) {
+
+                if (data.success) {
                     window.location.href = '/chat';
                 } else {
-                    errorDiv.textContent = data.error || 'Login failed';
-                    setTimeout(() => errorDiv.textContent = '', 3000);
+                    errorMessage.textContent = data.error || 'Login failed';
+                    errorMessage.classList.remove('hidden');
                 }
             } catch (err) {
-                errorDiv.textContent = 'Server error';
-                setTimeout(() => errorDiv.textContent = '', 3000);
+                errorMessage.textContent = 'An error occurred. Please try again.';
+                errorMessage.classList.remove('hidden');
             }
+        }
+
+        document.getElementById('password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
         });
     </script>
 </body>

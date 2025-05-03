@@ -49,7 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         toggleEmojiPicker();
     });
 
-    // Mobile menu toggle
     document.getElementById('mobile-menu-btn').addEventListener('click', () => {
         const sidebar = document.getElementById('sidebar');
         sidebar.classList.toggle('open');
@@ -121,12 +120,18 @@ socket.on('color change', data => {
 });
 
 socket.on('call-made', async data => {
-    if (isCalling) return;
+    console.log('Received call-made:', data);
+    if (isCalling) {
+        console.log('Already in a call, rejecting new call');
+        socket.emit('call-rejected', { to: data.from });
+        return;
+    }
     currentCallRecipient = data.from;
     document.getElementById('call-status').textContent = `${data.fromUsername} is calling you...`;
     document.getElementById('call-modal').style.display = 'flex';
 
     document.getElementById('accept-call').onclick = async () => {
+        console.log('Accepting call from:', data.from);
         document.getElementById('call-modal').style.display = 'none';
         isCalling = true;
         await setupPeerConnection(data.from);
@@ -144,12 +149,14 @@ socket.on('call-made', async data => {
     };
 
     document.getElementById('decline-call').onclick = () => {
+        console.log('Declining call from:', data.from);
         document.getElementById('call-modal').style.display = 'none';
         socket.emit('call-rejected', { to: data.from });
     };
 });
 
 socket.on('answer-made', async data => {
+    console.log('Received answer-made:', data);
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
         document.getElementById('call-interface').style.display = 'block';
@@ -172,16 +179,22 @@ socket.on('ice-candidate', async data => {
 });
 
 socket.on('call-rejected', () => {
+    console.log('Call rejected');
     alert('Call was declined.');
     endCall();
 });
 
 socket.on('hang-up', () => {
+    console.log('Received hang-up');
     endCall();
 });
 
 async function callUser(recipientId) {
-    if (isCalling) return;
+    if (isCalling) {
+        console.log('Already in a call');
+        return;
+    }
+    console.log('Initiating call to:', recipientId);
     currentCallRecipient = recipientId;
     isCalling = true;
     await setupPeerConnection(recipientId);
@@ -189,6 +202,7 @@ async function callUser(recipientId) {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         socket.emit('call-user', { offer, to: recipientId });
+        console.log('Sent call-user:', { offer, to: recipientId });
     } catch (e) {
         console.error('Error creating offer:', e);
         endCall();
@@ -196,36 +210,44 @@ async function callUser(recipientId) {
 }
 
 async function setupPeerConnection(recipientId) {
-    if (peerConnection) endCall();
+    if (peerConnection) {
+        console.log('Cleaning up existing peer connection');
+        endCall();
+    }
     peerConnection = new RTCPeerConnection(configuration);
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-        console.log('Added local track:', track);
-    });
-    remoteStream = new MediaStream();
-    document.getElementById('remote-audio').srcObject = remoteStream;
-
-    peerConnection.ontrack = event => {
-        event.streams[0].getTracks().forEach(track => {
-            remoteStream.addTrack(track);
-            console.log('Added remote track:', track);
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+            console.log('Added local track:', track);
         });
-    };
+        remoteStream = new MediaStream();
+        document.getElementById('remote-audio').srcObject = remoteStream;
 
-    peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-            socket.emit('ice-candidate', { candidate: event.candidate, to: recipientId });
-            console.log('Sent ICE candidate:', event.candidate);
-        }
-    };
+        peerConnection.ontrack = event => {
+            event.streams[0].getTracks().forEach(track => {
+                remoteStream.addTrack(track);
+                console.log('Added remote track:', track);
+            });
+        };
 
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionstate === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
-            endCall();
-        }
-    };
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                socket.emit('ice-candidate', { candidate: event.candidate, to: recipientId });
+                console.log('Sent ICE candidate:', event.candidate);
+            }
+        };
+
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('ICE state:', peerConnection.iceConnectionState);
+            if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
+                endCall();
+            }
+        };
+    } catch (e) {
+        console.error('Error setting up peer connection:', e);
+        endCall();
+    }
 }
 
 function endCall() {
@@ -245,6 +267,7 @@ function endCall() {
 function hangUp() {
     if (currentCallRecipient) {
         socket.emit('hang-up', { to: currentCallRecipient });
+        console.log('Sent hang-up to:', currentCallRecipient);
     }
     endCall();
 }
@@ -275,7 +298,8 @@ function handleMessage(msg, chat, isDM) {
         fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.text)}&langpair=${msg.language}|${userLanguage}`)
             .then(res => res.json())
             .then(data => {
-                div.querySelector('.message-content').innerHTML += `<span>${data.responseData.translatedText}</span><div class="meta">(${msg.language}: ${msg.text})</div>`;
+                div.querySelector('.message-content').innerHTML = `<span>${data.responseData.translatedText}</span><div class="meta">(${msg.language}: ${msg.text})</div>`;
+                div.querySelector('.reply-btn').style.display = 'block';
             });
     } else {
         content += `<span>${msg.text}</span>`;
@@ -307,7 +331,7 @@ function handleImageMessage(msg, chat, isDM) {
         const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
         content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
+    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image" onclick="openFullImage('${msg.image}')"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
     
     div.innerHTML = content;
     chat.appendChild(div);
