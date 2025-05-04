@@ -28,20 +28,6 @@ const groupSchema = new mongoose.Schema({
 });
 const Group = mongoose.model('Group', groupSchema);
 
-const messageSchema = new mongoose.Schema({
-    type: { type: String, required: true },
-    content: { type: String, required: true },
-    username: { type: String, required: true },
-    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    channel: { type: String },
-    groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group' },
-    recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message' },
-    profilePicture: { type: String },
-    timestamp: { type: Date, default: Date.now },
-});
-const Message = mongoose.model('Message', messageSchema);
-
 const store = new MongoDBStore({
     uri: 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/schoolchat?retryWrites=true&w=majority&appName=Cluster0',
     collection: 'sessions',
@@ -122,21 +108,12 @@ app.post('/create-group', async (req, res) => {
     res.json({ success: true, groupId: group._id.toString() });
 });
 
-app.get('/messages', async (req, res) => {
-    const { channel, groupId, recipientId } = req.query;
-    const query = channel ? { channel } : groupId ? { groupId: mongoose.Types.ObjectId(groupId) } : recipientId ? {
-        $or: [{ senderId: req.session.userId, recipientId: mongoose.Types.ObjectId(recipientId) }, { senderId: mongoose.Types.ObjectId(recipientId), recipientId: req.session.userId }]
-    } : {};
-    const messages = await Message.find(query).sort({ timestamp: 1 }).limit(200).populate('replyTo');
-    res.json(messages);
-});
-
 app.get('/logout', (req, res) => {
     req.session.destroy(() => res.redirect('/'));
 });
 
 const connectedUsers = new Map();
-const channels = ['Main Hall', 'Math', 'Science', 'English', 'History'];
+const channels = ['Math', 'Science', 'English', 'History', 'Art'];
 
 io.on('connection', async (socket) => {
     const session = socket.request.session;
@@ -165,87 +142,111 @@ io.on('connection', async (socket) => {
         socket.emit('dm joined', recipientId);
     });
 
-    socket.on('chat message', async (msg) => {
-        const message = new Message({
+    socket.on('chat message', (msg) => {
+        io.to(msg.channel).emit('chat message', {
             type: 'text',
             content: msg.text,
             username: msg.username,
-            senderId: mongoose.Types.ObjectId(msg.senderId),
+            senderId: msg.senderId,
             channel: msg.channel,
             profilePicture: msg.profilePicture,
-            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
+            color: msg.color,
         });
-        await message.save();
-        io.to(msg.channel).emit('chat message', message);
     });
 
-    socket.on('group message', async (msg) => {
-        const message = new Message({
+    socket.on('group message', (msg) => {
+        io.to(msg.groupId).emit('group message', {
             type: 'text',
             content: msg.text,
             username: msg.username,
-            senderId: mongoose.Types.ObjectId(msg.senderId),
-            groupId: mongoose.Types.ObjectId(msg.groupId),
+            senderId: msg.senderId,
+            groupId: msg.groupId,
             profilePicture: msg.profilePicture,
-            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
+            color: msg.color,
         });
-        await message.save();
-        io.to(msg.groupId.toString()).emit('group message', message);
     });
 
-    socket.on('dm message', async (msg) => {
-        const message = new Message({
-            type: 'text',
-            content: msg.text,
-            username: msg.username,
-            senderId: mongoose.Types.ObjectId(msg.senderId),
-            recipientId: mongoose.Types.ObjectId(msg.recipientId),
-            profilePicture: msg.profilePicture,
-            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
-        });
-        await message.save();
+    socket.on('dm message', (msg) => {
         const room = [msg.senderId, msg.recipientId].sort().join('-');
-        io.to(room).emit('dm message', message);
+        io.to(room).emit('dm message', {
+            type: 'text',
+            content: msg.text,
+            username: msg.username,
+            senderId: msg.senderId,
+            recipientId: msg.recipientId,
+            profilePicture: msg.profilePicture,
+            color: msg.color,
+        });
     });
 
-    socket.on('image message', async (msg) => {
-        const message = new Message({
-            type: 'image',
-            content: msg.image,
-            username: msg.username,
-            senderId: mongoose.Types.ObjectId(msg.senderId),
-            channel: msg.channel,
-            groupId: msg.groupId ? mongoose.Types.ObjectId(msg.groupId) : null,
-            recipientId: msg.recipientId ? mongoose.Types.ObjectId(msg.recipientId) : null,
-            profilePicture: msg.profilePicture,
-            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
-        });
-        await message.save();
+    socket.on('image message', (msg) => {
         if (msg.recipientId) {
             const room = [msg.senderId, msg.recipientId].sort().join('-');
-            io.to(room).emit('image message', message);
-        } else if (msg.groupId) io.to(msg.groupId.toString()).emit('image message', message);
-        else io.to(msg.channel).emit('image message', message);
+            io.to(room).emit('image message', {
+                type: 'image',
+                content: msg.image,
+                username: msg.username,
+                senderId: msg.senderId,
+                recipientId: msg.recipientId,
+                profilePicture: msg.profilePicture,
+                color: msg.color,
+            });
+        } else if (msg.groupId) {
+            io.to(msg.groupId).emit('image message', {
+                type: 'image',
+                content: msg.image,
+                username: msg.username,
+                senderId: msg.senderId,
+                groupId: msg.groupId,
+                profilePicture: msg.profilePicture,
+                color: msg.color,
+            });
+        } else {
+            io.to(msg.channel).emit('image message', {
+                type: 'image',
+                content: msg.image,
+                username: msg.username,
+                senderId: msg.senderId,
+                channel: msg.channel,
+                profilePicture: msg.profilePicture,
+                color: msg.color,
+            });
+        }
     });
 
-    socket.on('audio message', async (msg) => {
-        const message = new Message({
-            type: 'audio',
-            content: msg.audio,
-            username: msg.username,
-            senderId: mongoose.Types.ObjectId(msg.senderId),
-            channel: msg.channel,
-            groupId: msg.groupId ? mongoose.Types.ObjectId(msg.groupId) : null,
-            recipientId: msg.recipientId ? mongoose.Types.ObjectId(msg.recipientId) : null,
-            profilePicture: msg.profilePicture,
-            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
-        });
-        await message.save();
+    socket.on('audio message', (msg) => {
         if (msg.recipientId) {
             const room = [msg.senderId, msg.recipientId].sort().join('-');
-            io.to(room).emit('audio message', message);
-        } else if (msg.groupId) io.to(msg.groupId.toString()).emit('audio message', message);
-        else io.to(msg.channel).emit('audio message', message);
+            io.to(room).emit('audio message', {
+                type: 'audio',
+                content: msg.audio,
+                username: msg.username,
+                senderId: msg.senderId,
+                recipientId: msg.recipientId,
+                profilePicture: msg.profilePicture,
+                color: msg.color,
+            });
+        } else if (msg.groupId) {
+            io.to(msg.groupId).emit('audio message', {
+                type: 'audio',
+                content: msg.audio,
+                username: msg.username,
+                senderId: msg.senderId,
+                groupId: msg.groupId,
+                profilePicture: msg.profilePicture,
+                color: msg.color,
+            });
+        } else {
+            io.to(msg.channel).emit('audio message', {
+                type: 'audio',
+                content: msg.audio,
+                username: msg.username,
+                senderId: msg.senderId,
+                channel: msg.channel,
+                profilePicture: msg.profilePicture,
+                color: msg.color,
+            });
+        }
     });
 
     socket.on('typing', (data) => {

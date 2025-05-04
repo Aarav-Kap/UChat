@@ -1,5 +1,5 @@
 const socket = io('http://localhost:10000', { withCredentials: true, transports: ['websocket', 'polling'] });
-let username, userColor, userLanguage, userId, profilePicture, activeTab = 'Main Hall', dmTabs = {}, groupTabs = {}, replyingTo = null, currentCallRecipient = null, isCalling = false, groupCall = null;
+let username, userColor, userLanguage, userId, profilePicture, activeTab = 'Math', dmTabs = {}, groupTabs = {}, replyingTo = null, currentCallRecipient = null, isCalling = false, groupCall = null;
 let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
 const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }] };
 
@@ -9,26 +9,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     const data = await response.json();
     username = data.username; userColor = data.color; userLanguage = data.language; userId = data.userId; profilePicture = data.profilePicture;
     document.getElementById('chat-title').textContent = `#${activeTab}`;
-    loadInitialContent();
     socket.emit('join channel', activeTab);
 });
 
 function loadInitialContent() {
-    fetchMessages(activeTab);
     socket.emit('get user list');
 }
 
 socket.on('channels', channels => {
     const channelList = document.getElementById('channel-list');
     channelList.innerHTML = channels.map(channel => `
-        <li><button class="w-full bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600 ${channel === activeTab ? 'bg-red-600' : ''}" onclick="switchTab('${channel}')">#${channel}</button></li>
+        <li><button class="w-full bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 ${channel === activeTab ? 'bg-green-600' : ''}" onclick="switchTab('${channel}')">#${channel}</button></li>
     `).join('');
 });
 
 socket.on('groups', groups => {
     const groupList = document.getElementById('group-list');
     groupList.innerHTML = groups.map(group => `
-        <li><button class="w-full bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>
+        <li><button class="w-full bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>
     `).join('');
 });
 
@@ -36,7 +34,7 @@ socket.on('user list', users => {
     const dmList = document.getElementById('dm-list');
     dmList.innerHTML = users.filter(u => u.userId !== userId).map(u => `
         <li class="flex items-center space-x-2">
-            <button class="flex-1 bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600 text-left" onclick="startDM('${u.userId}', '${u.username}')">${u.username} ${users.some(online => online.userId === u.userId) ? '(Online)' : ''}</button>
+            <button class="flex-1 bg-gray-700 text-white p-2 rounded-md hover:bg-gray-600 text-left" onclick="startDM('${u.userId}', '${u.username}')">${u.username} ${users.some(online => online.userId === u.userId) ? '<span class="online-dot"></span>' : ''}</button>
             <button onclick="callUser('${u.userId}')" class="bg-red-600 text-white p-2 rounded-md hover:bg-red-500"><i class="fas fa-phone"></i></button>
         </li>
     `).join('');
@@ -45,17 +43,17 @@ socket.on('user list', users => {
 
 socket.on('channel joined', (channel) => {
     console.log(`Joined channel: ${channel}`);
-    fetchMessages(channel);
+    document.getElementById('messages').innerHTML = '';
 });
 
 socket.on('group joined', (groupId) => {
     console.log(`Joined group: ${groupId}`);
-    fetchMessages(`group-${groupId}`);
+    document.getElementById('messages').innerHTML = '';
 });
 
 socket.on('dm joined', (recipientId) => {
     console.log(`Joined DM with: ${recipientId}`);
-    fetchMessages(`dm-${recipientId}`);
+    document.getElementById('messages').innerHTML = '';
 });
 
 socket.on('chat message', msg => {
@@ -64,25 +62,25 @@ socket.on('chat message', msg => {
 });
 
 socket.on('group message', msg => {
-    if (activeTab === msg.groupId.toString()) appendMessage(msg, document.getElementById('messages'));
+    if (activeTab === `group-${msg.groupId}`) appendMessage(msg, document.getElementById('messages'));
     playNotification();
 });
 
 socket.on('dm message', msg => {
-    const partnerId = msg.senderId.toString() === userId ? msg.recipientId.toString() : msg.senderId.toString();
+    const partnerId = msg.senderId === userId ? msg.recipientId : msg.senderId;
     if (!dmTabs[partnerId]) startDM(partnerId, msg.username === username ? getUsernameFromId(partnerId) : msg.username);
     if (activeTab === `dm-${partnerId}`) appendMessage(msg, document.getElementById('messages'));
     playNotification();
 });
 
 socket.on('image message', msg => {
-    const target = msg.recipientId ? `dm-${msg.senderId.toString() === userId ? msg.recipientId.toString() : msg.senderId.toString()}` : msg.groupId ? msg.groupId.toString() : msg.channel;
+    const target = msg.recipientId ? `dm-${msg.senderId === userId ? msg.recipientId : msg.senderId}` : msg.groupId ? `group-${msg.groupId}` : msg.channel;
     if (activeTab === target) appendImageMessage(msg, document.getElementById('messages'));
     playNotification();
 });
 
 socket.on('audio message', msg => {
-    const target = msg.recipientId ? `dm-${msg.senderId.toString() === userId ? msg.recipientId.toString() : msg.senderId.toString()}` : msg.groupId ? msg.groupId.toString() : msg.channel;
+    const target = msg.recipientId ? `dm-${msg.senderId === userId ? msg.recipientId : msg.senderId}` : msg.groupId ? `group-${msg.groupId}` : msg.channel;
     if (activeTab === target) appendAudioMessage(msg, document.getElementById('messages'));
     playNotification();
 });
@@ -249,41 +247,26 @@ function hangUp() {
     endCall();
 }
 
-async function fetchMessages(tab) {
-    const messages = document.getElementById('messages');
-    messages.innerHTML = '';
-    const params = tab.startsWith('dm-') ? `recipientId=${tab.replace('dm-', '')}` : tab.startsWith('group-') ? `groupId=${tab.replace('group-', '')}` : `channel=${tab}`;
-    const response = await fetch(`/messages?${params}`, { credentials: 'include' });
-    const data = await response.json();
-    data.forEach(msg => {
-        if (msg.type === 'text') appendMessage(msg, messages);
-        else if (msg.type === 'image') appendImageMessage(msg, messages);
-        else if (msg.type === 'audio') appendAudioMessage(msg, messages);
-    });
-    messages.scrollTop = messages.scrollHeight;
-}
-
 function appendMessage(msg, container) {
     const div = document.createElement('div');
-    div.className = `message ${msg.senderId.toString() === userId ? 'sent' : 'received'}`;
-    div.dataset.messageId = msg._id;
+    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'} transition-all duration-200`;
     let content = `
         <div class="flex items-center space-x-2">
             <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
+            <span class="username text-sm font-semibold" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
     if (msg.replyTo) {
-        const repliedMsg = document.querySelector(`[data-message-id="${msg.replyTo}"]`);
+        const repliedMsg = container.querySelector(`[data-message-id="${msg.replyTo}"]`);
         const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Media';
-        content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
+        content += `<div class="reply-ref text-xs text-gray-400 bg-gray-800 p-1 rounded mt-1">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
     content += `
-        <div class="message-content">
-            <div class="message-body"><span>${msg.content}</span></div>
-            <div class="actions">
-                <button onclick="translateMessage('${msg._id}', '${msg.content}')">Translate</button>
-                <button onclick="startReply('${msg._id}')">Reply</button>
+        <div class="message-content bg-gray-800 p-2 rounded-lg mt-1">
+            <div class="message-body text-white"><span>${msg.content}</span></div>
+            <div class="actions flex space-x-2 mt-1">
+                <button onclick="translateMessage('${msg.content}')" class="text-blue-400 hover:text-blue-300 text-xs">Translate</button>
+                <button onclick="startReply('${msg.content}')" class="text-blue-400 hover:text-blue-300 text-xs">Reply</button>
             </div>
         </div>
     `;
@@ -294,24 +277,23 @@ function appendMessage(msg, container) {
 
 function appendImageMessage(msg, container) {
     const div = document.createElement('div');
-    div.className = `message ${msg.senderId.toString() === userId ? 'sent' : 'received'}`;
-    div.dataset.messageId = msg._id;
+    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'} transition-all duration-200`;
     let content = `
         <div class="flex items-center space-x-2">
             <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
+            <span class="username text-sm font-semibold" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
     if (msg.replyTo) {
-        const repliedMsg = document.querySelector(`[data-message-id="${msg.replyTo}"]`);
+        const repliedMsg = container.querySelector(`[data-message-id="${msg.replyTo}"]`);
         const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Image';
-        content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
+        content += `<div class="reply-ref text-xs text-gray-400 bg-gray-800 p-1 rounded mt-1">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
     content += `
-        <div class="message-content">
-            <div class="message-body"><img src="${msg.content}" alt="Image" class="chat-image" onclick="openImage('${msg.content}')"></div>
-            <div class="actions">
-                <button onclick="startReply('${msg._id}')">Reply</button>
+        <div class="message-content bg-gray-800 p-2 rounded-lg mt-1">
+            <div class="message-body"><img src="${msg.content}" alt="Image" class="chat-image max-w-xs rounded-lg cursor-pointer hover:opacity-80 transition-opacity" onclick="openImage('${msg.content}')"></div>
+            <div class="actions flex space-x-2 mt-1">
+                <button onclick="startReply('${msg.content}')" class="text-blue-400 hover:text-blue-300 text-xs">Reply</button>
             </div>
         </div>
     `;
@@ -322,44 +304,43 @@ function appendImageMessage(msg, container) {
 
 function appendAudioMessage(msg, container) {
     const div = document.createElement('div');
-    div.className = `message ${msg.senderId.toString() === userId ? 'sent' : 'received'}`;
-    div.dataset.messageId = msg._id;
+    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'} transition-all duration-200`;
     let content = `
         <div class="flex items-center space-x-2">
             <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
+            <span class="username text-sm font-semibold" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
     if (msg.replyTo) {
-        const repliedMsg = document.querySelector(`[data-message-id="${msg.replyTo}"]`);
+        const repliedMsg = container.querySelector(`[data-message-id="${msg.replyTo}"]`);
         const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Audio';
-        content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
+        content += `<div class="reply-ref text-xs text-gray-400 bg-gray-800 p-1 rounded mt-1">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
     content += `
-        <div class="message-content">
-            <div class="message-body"><audio controls src="${msg.content}"></audio></div>
-            <div class="actions">
-                <button onclick="startReply('${msg._id}')">Reply</button>
+        <div class="message-content bg-gray-800 p-2 rounded-lg mt-1">
+            <div class="message-body"><audio controls class="w-full"></audio></div>
+            <div class="actions flex space-x-2 mt-1">
+                <button onclick="startReply('${msg.content}')" class="text-blue-400 hover:text-blue-300 text-xs">Reply</button>
             </div>
         </div>
     `;
     div.innerHTML = content;
+    const audio = div.querySelector('audio');
+    audio.src = msg.content;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }
 
-async function translateMessage(messageId, text) {
+async function translateMessage(text) {
     const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${userLanguage}`);
     const data = await response.json();
     const translatedText = data.responseData.translatedText;
-    const messageEl = document.querySelector(`[data-message-id="${messageId}"] .message-body span`);
-    messageEl.textContent = translatedText + ` (Original: ${text})`;
+    return translatedText + ` (Original: ${text})`;
 }
 
-function startReply(messageId) {
-    replyingTo = messageId;
-    const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
-    document.getElementById('reply-preview').textContent = `Replying to ${repliedMsg.querySelector('.username').textContent}: ${repliedMsg.querySelector('.message-body span')?.textContent || 'Media'}`;
+function startReply(content) {
+    replyingTo = content;
+    document.getElementById('reply-preview').textContent = `Replying to ${username}: ${content}`;
     document.getElementById('reply-container').style.display = 'flex';
     document.getElementById('message-input').focus();
 }
@@ -404,10 +385,10 @@ function switchTab(tabId, type = 'channel') {
     activeTab = type === 'channel' ? tabId : type === 'group' ? `group-${tabId}` : `dm-${tabId}`;
     document.getElementById('chat-title').textContent = type === 'channel' ? `#${tabId}` : type === 'group' ? (groupTabs[tabId]?.title || 'Group') : dmTabs[tabId]?.title || 'DM';
     document.getElementById('group-call-btn').style.display = type === 'group' ? 'block' : 'none';
+    document.getElementById('messages').innerHTML = '';
     if (type === 'channel') socket.emit('join channel', tabId);
     else if (type === 'group') socket.emit('join group', tabId);
     else if (type === 'dm') socket.emit('join dm', tabId);
-    fetchMessages(activeTab);
 }
 
 function sendMessage() {

@@ -3,56 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SchoolChat - Welcome</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css">
+    <title>UChat - Login</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+            background: #202225;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .login-container {
+            background: #2f3136;
+            border-radius: 8px;
+            padding: 2rem;
+            width: 350px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        h2 {
+            color: #fff;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        label {
+            color: #b9bbbe;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 4px;
+            background: #40444b;
+            color: #fff;
+            font-size: 1rem;
+        }
+        input:focus {
+            outline: none;
+            background: #4f545c;
+        }
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 4px;
+            background: #5865f2;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        button:hover {
+            background: #4752c4;
+        }
+        .toggle-link {
+            color: #00aff4;
+            text-align: center;
+            margin-top: 1rem;
+            display: block;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        .toggle-link:hover {
+            color: #0099e1;
+        }
+        .error {
+            color: #ff5555;
+            text-align: center;
+            margin-top: 1rem;
+            display: none;
+        }
+    </style>
 </head>
-<body class="bg-black flex items-center justify-center min-h-screen">
-    <div class="bg-white p-6 rounded-lg shadow-lg text-center">
-        <h1 class="text-3xl font-bold text-blue-700 mb-4">SchoolChat</h1>
-        <div id="auth-container" class="space-y-4">
-            <div id="login-form">
-                <div id="login-error" class="text-red-600 hidden mb-2"></div>
-                <input type="text" id="login-username" placeholder="Username" class="w-full p-2 rounded-md bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-700 mb-2">
-                <input type="password" id="login-password" placeholder="Password" class="w-full p-2 rounded-md bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-700 mb-2">
-                <button onclick="login()" class="w-full bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600">Login</button>
-                <p class="mt-2 text-black">New? <span class="text-red-600 cursor-pointer" onclick="showRegister()">Register</span></p>
+<body>
+    <div class="login-container">
+        <h2>Uchat</h2>
+        <div id="login-form" style="display: block;">
+            <div class="form-group">
+                <label for="login-username">Username</label>
+                <input type="text" id="login-username" placeholder="Enter username">
             </div>
-            <div id="register-form" class="hidden">
-                <div id="register-error" class="text-red-600 hidden mb-2"></div>
-                <input type="text" id="register-username" placeholder="Username" class="w-full p-2 rounded-md bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-700 mb-2">
-                <input type="password" id="register-password" placeholder="Password" class="w-full p-2 rounded-md bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-700 mb-2">
-                <button onclick="register()" class="w-full bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600">Register</button>
-                <p class="mt-2 text-black">Have an account? <span class="text-red-600 cursor-pointer" onclick="showLogin()">Login</span></p>
+            <div class="form-group">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" placeholder="Enter password">
             </div>
+            <button onclick="login()">Login</button>
+            <a href="#" onclick="toggleForm('register')" class="toggle-link">Need an account? Register</a>
+            <div id="login-error" class="error"></div>
+        </div>
+        <div id="register-form" style="display: none;">
+            <div class="form-group">
+                <label for="register-username">Username</label>
+                <input type="text" id="register-username" placeholder="Choose username">
+            </div>
+            <div class="form-group">
+                <label for="register-password">Password</label>
+                <input type="password" id="register-password" placeholder="Choose password">
+            </div>
+            <button onclick="register()">Register</button>
+            <a href="#" onclick="toggleForm('login')" class="toggle-link">Back to Login</a>
+            <div id="register-error" class="error"></div>
         </div>
     </div>
-
     <script>
-        function showLogin() { document.getElementById('login-form').style.display = 'block'; document.getElementById('register-form').style.display = 'none'; }
-        function showRegister() { document.getElementById('login-form').style.display = 'none'; document.getElementById('register-form').style.display = 'block'; }
-        showLogin();
+        function toggleForm(form) {
+            document.getElementById('login-form').style.display = form === 'login' ? 'block' : 'none';
+            document.getElementById('register-form').style.display = form === 'register' ? 'block' : 'none';
+        }
 
         async function login() {
-            const username = document.getElementById('login-username').value.trim();
+            const username = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
-            const error = document.getElementById('login-error');
-            if (!username || !password) { error.textContent = 'Please fill all fields'; error.classList.remove('hidden'); return; }
-            const response = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }), credentials: 'include' });
+            const response = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
+                credentials: 'include'
+            });
             const data = await response.json();
             if (data.success) window.location.href = '/app';
-            else { error.textContent = data.error || 'Login failed'; error.classList.remove('hidden'); }
+            else {
+                document.getElementById('login-error').textContent = data.error;
+                document.getElementById('login-error').style.display = 'block';
+            }
         }
 
         async function register() {
-            const username = document.getElementById('register-username').value.trim();
+            const username = document.getElementById('register-username').value;
             const password = document.getElementById('register-password').value;
-            const error = document.getElementById('register-error');
-            if (!username || !password) { error.textContent = 'Please fill all fields'; error.classList.remove('hidden'); return; }
-            const response = await fetch('/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }), credentials: 'include' });
+            const response = await fetch('/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
+                credentials: 'include'
+            });
             const data = await response.json();
             if (data.success) window.location.href = '/app';
-            else { error.textContent = data.error || 'Registration failed'; error.classList.remove('hidden'); }
+            else {
+                document.getElementById('register-error').textContent = data.error;
+                document.getElementById('register-error').style.display = 'block';
+            }
         }
     </script>
 </body>
