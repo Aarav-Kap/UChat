@@ -1,217 +1,169 @@
 const express = require('express');
-const app = express();
-const http = require('http').Server(app);
-const io = require('socket.io')(http, {
-    cors: {
-        origin: 'https://uchat-997p.onrender.com',
-        methods: ['GET', 'POST'],
-        credentials: true,
-    },
-    maxHttpBufferSize: 1e7, // 10MB for audio messages
-});
+const http = require('http');
+const socketIo = require('socket.io');
+const mongoose = require('mongoose');
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
-const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-const mongoURI = 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
-mongoose.connect(mongoURI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
-
-const userSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    color: { type: String, default: '#1E90FF' },
-    language: { type: String, default: 'en' },
+// Initialize Express app and HTTP server
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+    cors: { origin: '*' }
 });
-const User = mongoose.model('User', userSchema);
 
+// MongoDB connection
+mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/Cluster0?retryWrites=true&w=majority', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}).then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// Session store
 const store = new MongoDBStore({
-    uri: mongoURI,
-    collection: 'sessions',
+    uri: 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/Cluster0?retryWrites=true&w=majority',
+    collection: 'sessions'
 });
-store.on('error', err => console.error('Session store error:', err));
+store.on('error', error => console.error('Session store error:', error));
 
-const sessionMiddleware = session({
+// Express middleware
+app.use(express.static(__dirname)); // Serve static files (style.css, app.js, notification.mp3) from root
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
     secret: 'UlisChatSecret2025',
     resave: false,
     saveUninitialized: false,
     store: store,
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, secure: false },
-});
-app.use(sessionMiddleware);
-app.use(express.static(path.join(__dirname)));
-app.use(express.json());
-
-io.use((socket, next) => {
-    sessionMiddleware(socket.request, {}, next);
-});
-
-app.get('/', (req, res) => {
-    if (req.session.userId) return res.redirect('/chat');
-    res.sendFile(path.join(__dirname, 'login.html'));
-});
-
-app.get('/register', (req, res) => {
-    if (req.session.userId) return res.redirect('/chat');
-    res.sendFile(path.join(__dirname, 'register.html'));
-});
-
-app.get('/chat', (req, res) => {
-    if (!req.session.userId) return res.redirect('/');
-    res.sendFile(path.join(__dirname, 'chat.html'));
-});
-
-app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    const user = await User.findOne({ username });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-        return res.status(400).json({ error: 'Invalid credentials' });
+    cookie: {
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        secure: process.env.NODE_ENV === 'production'
     }
-    req.session.userId = user._id.toString();
-    req.session.username = user.username;
-    res.json({ success: true });
+}));
+app.set('view engine', 'html');
+app.engine('html', require('ejs').renderFile);
+
+// MongoDB Schemas
+const UserSchema = new mongoose.Schema({
+    username: { type: String, unique: true, required: true },
+    password: { type: String, required: true },
+    color: { type: String, default: '#ffffff' },
+    language: { type: String, default: 'en' },
+    muteNotifications: { type: Boolean, default: false },
+    profilePicture: { type: String, default: '' },
+    bio: { type: String, default: '' },
+    joinedDate: { type: Date, default: Date.now }
+});
+const MessageSchema = new mongoose.Schema({
+    channel: { type: String, required: true },
+    sender: { type: String, required: true },
+    content: { type: String },
+    type: { type: String, enum: ['text', 'image', 'voice'], default: 'text' },
+    replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message' },
+    timestamp: { type: Date, default: Date.now }
+});
+const User = mongoose.model('User', UserSchema);
+const Message = mongoose.model('Message', MessageSchema);
+
+// Routes
+app.get('/', (req, res) => res.redirect('/login'));
+app.get('/login', (req, res) => res.render(path.join(__dirname, 'login.html')));
+app.get('/register', (req, res) => res.render(path.join(__dirname, 'register.html')));
+app.get('/chat', (req, res) => {
+    if (!req.session.user) return res.redirect('/login');
+    res.render(path.join(__dirname, 'chat.html'), { user: req.session.user });
 });
 
+// Authentication
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
-    if (await User.findOne({ username })) {
-        return res.status(400).json({ error: 'Username taken' });
+    try {
+        const existingUser = await User.findOne({ username });
+        if (existingUser) return res.status(400).json({ error: 'Username taken' });
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const user = new User({ username, password: hashedPassword });
+        await user.save();
+        res.status(201).json({ message: 'User registered' });
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ username, password: hashedPassword });
-    await user.save();
-    req.session.userId = user._id.toString();
-    req.session.username = user.username;
-    res.json({ success: true });
 });
-
-app.get('/user', async (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const user = await User.findById(req.session.userId);
-    res.json({ username: user.username, color: user.color, language: user.language, userId: user._id.toString() });
-});
-
-app.post('/change-color', async (req, res) => {
-    const { color } = req.body;
-    const user = await User.findById(req.session.userId);
-    user.color = color;
-    await user.save();
-    res.json({ success: true });
-});
-
-app.post('/update-language', async (req, res) => {
-    const { language } = req.body;
-    const user = await User.findById(req.session.userId);
-    user.language = language;
-    await user.save();
-    res.json({ success: true });
-});
-
-app.get('/logout', (req, res) => {
-    req.session.destroy(() => res.redirect('/'));
-});
-
-const connectedUsers = new Map();
-io.on('connection', async (socket) => {
-    console.log('New Socket.IO connection:', socket.id);
-    const session = socket.request.session;
-    if (!session.userId) {
-        console.log('No session, disconnecting:', socket.id);
-        return socket.disconnect(true);
+app.post('/login', async (req, res) => {
+    const { username, password } = req.body;
+    try {
+        const user = await User.findOne({ username });
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        req.session.user = user;
+        res.json({ message: 'Logged in' });
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
     }
-    const user = await User.findById(session.userId);
-    connectedUsers.set(socket.id, { id: socket.id, userId: user._id.toString(), username: user.username, color: user.color });
-    io.emit('user list', Array.from(connectedUsers.values()));
+});
+app.post('/logout', (req, res) => {
+    req.session.destroy();
+    res.json({ message: 'Logged out' });
+});
 
-    socket.on('chat message', (msg) => {
-        console.log('Chat message received:', msg);
-        msg.senderId = user._id.toString();
-        io.emit('chat message', msg);
+// Socket.IO
+io.on('connection', socket => {
+    socket.on('joinChannel', async ({ channel, username }) => {
+        socket.join(channel);
+        const messages = await Message.find({ channel }).populate('replyTo').limit(50).sort({ timestamp: 1 });
+        socket.emit('loadMessages', messages);
     });
 
-    socket.on('dm message', (msg) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
-        if (recipient) io.to(recipient.id).emit('dm message', msg);
-        socket.emit('dm message', msg);
+    socket.on('sendMessage', async ({ channel, content, type, replyTo, sender }) => {
+        const message = new Message({ channel, sender, content, type, replyTo });
+        await message.save();
+        const populatedMessage = await Message.findById(message._id).populate('replyTo');
+        io.to(channel).emit('newMessage', populatedMessage);
     });
 
-    socket.on('image message', (msg) => {
-        msg.senderId = user._id.toString();
-        if (msg.recipientId) {
-            const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
-            if (recipient) io.to(recipient.id).emit('image message', msg);
-            socket.emit('image message', msg);
-        } else {
-            io.emit('image message', msg);
-        }
+    socket.on('typing', ({ channel, username }) => {
+        socket.to(channel).emit('typing', { username });
     });
 
-    socket.on('audio message', (msg) => {
-        console.log('Audio message received:', msg);
-        msg.senderId = user._id.toString();
-        if (msg.recipientId) {
-            const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
-            if (recipient) io.to(recipient.id).emit('audio message', msg);
-            socket.emit('audio message', msg);
-        } else {
-            io.emit('audio message', msg);
-        }
+    socket.on('stopTyping', ({ channel }) => {
+        socket.to(channel).emit('stopTyping');
     });
 
-    socket.on('color change', (data) => {
-        connectedUsers.get(socket.id).color = data.color;
-        io.emit('color change', data);
+    socket.on('webrtcSignal', ({ to, signal, from }) => {
+        io.to(to).emit('webrtcSignal', { signal, from });
     });
 
-    socket.on('typing', (data) => socket.broadcast.emit('typing', data));
-    socket.on('stop typing', (data) => socket.broadcast.emit('stop typing', data));
-
-    socket.on('call-user', (data) => {
-        const sender = connectedUsers.get(socket.id);
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) {
-            io.to(recipient.id).emit('call-made', {
-                offer: data.offer,
-                from: sender.userId,
-                fromUsername: sender.username,
-            });
-        }
+    socket.on('callUser', ({ to, from }) => {
+        io.to(to).emit('incomingCall', { from });
     });
 
-    socket.on('make-answer', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) {
-            io.to(recipient.id).emit('answer-made', {
-                answer: data.answer,
-                fromUsername: connectedUsers.get(socket.id).username,
-            });
-        }
+    socket.on('acceptCall', ({ to }) => {
+        io.to(to).emit('callAccepted');
     });
 
-    socket.on('ice-candidate', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('ice-candidate', { candidate: data.candidate });
-    });
-
-    socket.on('call-rejected', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('call-rejected');
-    });
-
-    socket.on('hang-up', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('hang-up');
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Socket.IO disconnected:', socket.id);
-        connectedUsers.delete(socket.id);
-        io.emit('user list', Array.from(connectedUsers.values()));
+    socket.on('declineCall', ({ to }) => {
+        io.to(to).emit('callDeclined');
     });
 });
 
+// Profile updates
+app.post('/updateProfile', async (req, res) => {
+    if (!req.session.user) return res.status(401).json({ error: 'Unauthorized' });
+    const { color, language, muteNotifications, bio, profilePicture } = req.body;
+    try {
+        await User.updateOne(
+            { _id: req.session.user._id },
+            { color, language, muteNotifications, bio, profilePicture }
+        );
+        req.session.user = await User.findById(req.session.user._id);
+        res.json({ message: 'Profile updated' });
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Start server
 const PORT = process.env.PORT || 10000;
-http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

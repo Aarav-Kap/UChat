@@ -4,44 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UChat - Register</title>
-    <link rel="stylesheet" href="style.css">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
 </head>
-<body>
-    <div class="auth-container">
-        <h2>Register for UChat</h2>
-        <form id="register-form">
-            <input type="text" id="username" placeholder="Username" required><br>
-            <input type="password" id="password" placeholder="Password" required><br>
-            <button type="submit">Register</button>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-md p-8 bg-gray-800 rounded-lg shadow-lg animate__animated animate__fadeIn">
+        <h2 class="text-2xl font-bold text-center mb-6">UChat Register</h2>
+        <form id="registerForm" class="space-y-4">
+            <div>
+                <label for="username" class="block text-sm font-medium">Username</label>
+                <input type="text" id="username" name="username" class="w-full p-2 mt-1 bg-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-medium">Password</label>
+                <input type="password" id="password" name="password" class="w-full p-2 mt-1 bg-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            </div>
+            <button type="submit" class="w-full p-2 bg-blue-600 rounded hover:bg-blue-700 transition">Register</button>
         </form>
-        <p id="error" style="color: red;"></p>
-        <p>Already have an account? <a href="/">Login</a></p>
+        <p class="mt-4 text-center">Already have an account? <a href="/login" class="text-blue-400 hover:underline">Login</a></p>
+        <p id="error" class="mt-4 text-center text-red-500 hidden"></p>
     </div>
-
     <script>
-        document.getElementById('register-form').addEventListener('submit', async (e) => {
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('error');
-
+            const error = document.getElementById('error');
             try {
                 const response = await fetch('/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password }),
-                    credentials: 'include'
+                    body: JSON.stringify({ username, password })
                 });
                 const data = await response.json();
-                if (response.ok) {
-                    window.location.href = '/chat';
+                if (data.error) {
+                    error.textContent = data.error;
+                    error.classList.remove('hidden');
                 } else {
-                    errorDiv.textContent = data.error || 'Registration failed';
-                    setTimeout(() => errorDiv.textContent = '', 3000);
+                    window.location.href = '/login';
                 }
             } catch (err) {
-                errorDiv.textContent = 'Server error';
-                setTimeout(() => errorDiv.textContent = '', 3000);
+                error.textContent = 'Server error';
+                error.classList.remove('hidden');
             }
         });
     </script>

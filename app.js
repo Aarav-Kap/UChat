@@ -1,598 +1,294 @@
-const socket = io('https://uchat-997p.onrender.com', {
-    withCredentials: true,
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 5,
-});
-let username, userColor, userLanguage, userId, activeTab = 'main', dmTabs = {};
-let isMuted = false;
-let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
-let replyingTo = null;
-let currentCallRecipient = null;
-let isCalling = false;
-const configuration = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelayproject',
-            credential: 'openrelayproject',
-        },
-        {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject',
-            credential: 'openrelayproject',
-        },
-    ]
-};
+const socket = io();
+const user = JSON.parse(document.querySelector('script').getAttribute('data-user') || '{}');
+let currentChannel = 'Main';
+let currentDM = null;
+let peerConnection;
+let mediaRecorder;
+let audioStream;
 
-socket.on('connect', () => console.log('Socket.IO connected:', socket.id));
-socket.on('connect_error', (err) => console.error('Socket.IO connection error:', err.message));
+// TURN servers (using openrelay for simplicity; consider Xirsys for production)
+const turnServers = [
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+];
 
-document.addEventListener('DOMContentLoaded', async () => {
-    const response = await fetch('/user', { credentials: 'include' });
-    if (!response.ok) return window.location.href = '/';
-    const data = await response.json();
-    username = data.username;
-    userColor = data.color;
-    userLanguage = data.language;
-    userId = data.userId;
-    document.getElementById('current-username').textContent = `Welcome, ${username}`;
-    document.getElementById('language-select').value = userLanguage;
-    document.getElementById('mute-btn').textContent = `Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
-
-    const picker = document.querySelector('emoji-picker');
-    picker.addEventListener('emoji-click', event => {
-        const input = document.getElementById('message-input');
-        input.value += event.detail.unicode;
-        input.focus();
-        toggleEmojiPicker();
-    });
-
-    document.getElementById('mobile-menu-btn').addEventListener('click', () => {
-        const sidebar = document.getElementById('sidebar');
-        sidebar.classList.toggle('open');
-    });
-});
-
-socket.on('user list', users => {
-    const ul = document.getElementById('user-list');
-    ul.innerHTML = users
-        .filter(u => u.userId !== userId)
-        .map(u => `
-            <li class="flex items-center space-x-2">
-                <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-white" style="background-color: ${u.color}">
-                    ${u.username[0].toUpperCase()}
-                </div>
-                <span class="flex-1 cursor-pointer" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</span>
-                <button onclick="callUser('${u.userId}')" class="btn-icon"><i class="fas fa-phone"></i></button>
-            </li>
-        `)
-        .join('');
-    document.getElementById('user-count').textContent = users.length;
-});
-
-socket.on('chat message', msg => {
-    handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
-    playNotification();
-});
-
-socket.on('dm message', msg => {
-    const partnerId = msg.senderId === userId ? msg.recipientId : msg.senderId;
-    if (!dmTabs[partnerId]) {
-        const partnerUsername = msg.username === username ? getRecipientUsername(partnerId) : msg.username;
-        createDMTab(partnerId, partnerUsername);
-    }
-    handleMessage(msg, dmTabs[partnerId].chat, true);
-    playNotification();
-});
-
-socket.on('image message', msg => {
-    const partnerId = msg.recipientId ? (msg.senderId === userId ? msg.recipientId : msg.senderId) : null;
-    const chat = partnerId ? dmTabs[partnerId]?.chat : document.getElementById('chat-area').querySelector('.chat-content');
-    if (chat) {
-        handleImageMessage(msg, chat, !!partnerId);
-        playNotification();
-    }
-});
-
-socket.on('audio message', msg => {
-    const partnerId = msg.recipientId ? (msg.senderId === userId ? msg.recipientId : msg.senderId) : null;
-    const chat = partnerId ? dmTabs[partnerId]?.chat : document.getElementById('chat-area').querySelector('.chat-content');
-    if (chat) {
-        handleAudioMessage(msg, chat, !!partnerId);
-        playNotification();
-    }
-});
-
-socket.on('typing', data => {
-    if (data.tab === activeTab) document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
-});
-
-socket.on('stop typing', data => {
-    if (data.tab === activeTab) document.getElementById('typing-indicator').textContent = '';
-});
-
-socket.on('color change', data => {
-    document.querySelectorAll('.message').forEach(msg => {
-        if (msg.dataset.senderId === data.id) msg.style.setProperty('--username-color', data.color);
-    });
-});
-
-socket.on('call-made', async data => {
-    console.log('Received call-made:', data);
-    if (isCalling) {
-        console.log('Already in a call, rejecting new call');
-        socket.emit('call-rejected', { to: data.from });
-        return;
-    }
-    currentCallRecipient = data.from;
-    document.getElementById('call-status').textContent = `${data.fromUsername} is calling you...`;
-    document.getElementById('call-modal').style.display = 'flex';
-
-    document.getElementById('accept-call').onclick = async () => {
-        console.log('Accepting call from:', data.from);
-        document.getElementById('call-modal').style.display = 'none';
-        isCalling = true;
-        await setupPeerConnection(data.from);
-        try {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('make-answer', { answer, to: data.from });
-            document.getElementById('call-interface').style.display = 'block';
-            document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
-        } catch (e) {
-            console.error('Error accepting call:', e);
-            endCall();
+// Initialize WebRTC
+function createPeerConnection() {
+    peerConnection = new RTCPeerConnection({ iceServers: turnServers });
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            socket.emit('webrtcSignal', { to: currentDM, signal: event.candidate, from: user.username });
         }
     };
-
-    document.getElementById('decline-call').onclick = () => {
-        console.log('Declining call from:', data.from);
-        document.getElementById('call-modal').style.display = 'none';
-        socket.emit('call-rejected', { to: data.from });
+    peerConnection.ontrack = (event) => {
+        const audio = document.createElement('audio');
+        audio.srcObject = event.streams[0];
+        audio.autoplay = true;
+        document.body.appendChild(audio);
     };
-});
-
-socket.on('answer-made', async data => {
-    console.log('Received answer-made:', data);
-    try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-        if (!document.getElementById('call-interface').style.display || document.getElementById('call-interface').style.display === 'none') {
-            document.getElementById('call-interface').style.display = 'block';
-            document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
-        }
-    } catch (e) {
-        console.error('Error setting answer:', e);
-        endCall();
-    }
-});
-
-socket.on('ice-candidate', async data => {
-    if (peerConnection && data.candidate) {
-        try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-            console.log('ICE candidate added:', data.candidate);
-        } catch (e) {
-            console.error('Error adding ICE candidate:', e);
-        }
-    }
-});
-
-socket.on('call-rejected', () => {
-    console.log('Call rejected');
-    alert('Call was declined.');
-    endCall();
-});
-
-socket.on('hang-up', () => {
-    console.log('Received hang-up');
-    endCall();
-});
-
-async function callUser(recipientId) {
-    if (isCalling) {
-        console.log('Already in a call');
-        return;
-    }
-    console.log('Initiating call to:', recipientId);
-    currentCallRecipient = recipientId;
-    isCalling = true;
-    await setupPeerConnection(recipientId);
-    try {
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        const sender = { userId: userId, username: username };
-        socket.emit('call-user', { offer, to: recipientId, from: sender.userId, fromUsername: sender.username });
-        console.log('Sent call-user:', { offer, to: recipientId });
-    } catch (e) {
-        console.error('Error creating offer:', e);
-        endCall();
-    }
 }
 
-async function setupPeerConnection(recipientId) {
-    if (peerConnection) {
-        console.log('Cleaning up existing peer connection');
-        endCall();
-    }
-    peerConnection = new RTCPeerConnection(configuration);
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-            console.log('Added local track:', track);
-        });
-        remoteStream = new MediaStream();
-        document.getElementById('remote-audio').srcObject = remoteStream;
+// Load messages
+socket.on('loadMessages', (messages) => {
+    const messagesDiv = document.getElementById('messages');
+    messagesDiv.innerHTML = '';
+    messages.forEach(msg => displayMessage(msg));
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+});
 
-        peerConnection.ontrack = event => {
-            event.streams[0].getTracks().forEach(track => {
-                remoteStream.addTrack(track);
-                console.log('Added remote track:', track);
-            });
-        };
-
-        peerConnection.onicecandidate = event => {
-            if (event.candidate) {
-                socket.emit('ice-candidate', { candidate: event.candidate, to: recipientId });
-                console.log('Sent ICE candidate:', event.candidate);
-            }
-        };
-
-        peerConnection.oniceconnectionstatechange = () => {
-            console.log('ICE state:', peerConnection.iceConnectionState);
-            if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
-                endCall();
-            }
-        };
-    } catch (e) {
-        console.error('Error setting up peer connection:', e);
-        endCall();
-    }
-}
-
-function endCall() {
-    if (peerConnection) peerConnection.close();
-    if (localStream) localStream.getTracks().forEach(track => track.stop());
-    if (remoteStream) remoteStream.getTracks().forEach(track => track.stop());
-    peerConnection = null;
-    localStream = null;
-    remoteStream = null;
-    currentCallRecipient = null;
-    isCalling = false;
-    document.getElementById('call-interface').style.display = 'none';
-    document.getElementById('remote-audio').srcObject = null;
-    console.log('Call ended');
-}
-
-function hangUp() {
-    if (currentCallRecipient) {
-        socket.emit('hang-up', { to: currentCallRecipient });
-        console.log('Sent hang-up to:', currentCallRecipient);
-    }
-    endCall();
-}
-
-function handleMessage(msg, chat, isDM) {
+// Display message
+function displayMessage(msg) {
+    const messagesDiv = document.getElementById('messages');
     const div = document.createElement('div');
-    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
-    div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg.messageId || Date.now();
-    div.style.setProperty('--username-color', msg.color);
-    
-    let content = `
-        <div class="flex items-center space-x-2">
-            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs" style="background-color: ${msg.color}">
-                ${msg.username[0].toUpperCase()}
-            </div>
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
-        </div>`;
+    div.className = `message ${msg.sender === user.username ? 'ml-auto bg-blue-600' : 'bg-gray-700'}`;
+    div.style.borderColor = msg.sender === user.username ? user.color : '#4B5563';
+    let content = '';
     if (msg.replyTo) {
-        const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
-        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
-        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
+        content += `<div class="reply-preview">${msg.replyTo.sender}: ${msg.replyTo.content}</div>`;
     }
-    content += '<div class="message-content">';
-    
-    if (msg.language !== userLanguage) {
-        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.text)}&langpair=${msg.language}|${userLanguage}`)
-            .then(res => res.json())
-            .then(data => {
-                div.querySelector('.message-content').innerHTML = `<span>${data.responseData.translatedText}</span><div class="meta">(${msg.language}: ${msg.text})</div>`;
-                div.querySelector('.reply-btn').style.display = 'block';
-            });
-    } else {
-        content += `<span>${msg.text}</span>`;
+    if (msg.type === 'text') {
+        content += `<p>${msg.content}</p>`;
+    } else if (msg.type === 'image') {
+        content += `<img src="${msg.content}" alt="Shared image">`;
+    } else if (msg.type === 'voice') {
+        content += `<audio controls src="${msg.content}"></audio>`;
     }
-    content += `<button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
-    
-    div.innerHTML = content;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-}
-
-function handleImageMessage(msg, chat, isDM) {
-    const div = document.createElement('div');
-    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
-    div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg.messageId || Date.now();
-    div.style.setProperty('--username-color', msg.color);
-    
-    let content = `
-        <div class="flex items-center space-x-2">
-            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs" style="background-color: ${msg.color}">
-                ${msg.username[0].toUpperCase()}
-            </div>
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
-        </div>`;
-    if (msg.replyTo) {
-        const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
-        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
-        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
+    content += `<small>${new Date(msg.timestamp).toLocaleTimeString()}</small>`;
+    div.innerHTML = `<div class="flex items-center"><img src="${msg.senderProfilePicture || 'https://via.placeholder.com/40'}" class="w-8 h-8 rounded-full mr-2"><span>${msg.sender}</span></div>${content}`;
+    div.dataset.id = msg._id;
+    div.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showReplyPrompt(msg._id);
+    });
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    if (!user.muteNotifications) {
+        new Audio('/notification.mp3').play();
     }
-    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image" onclick="openFullImage('${msg.image}')"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
-    
-    div.innerHTML = content;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
 }
 
-function handleAudioMessage(msg, chat, isDM) {
-    const div = document.createElement('div');
-    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
-    div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg.messageId || Date.now();
-    div.style.setProperty('--username-color', msg.color);
-    
-    let content = `
-        <div class="flex items-center space-x-2">
-            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs" style="background-color: ${msg.color}">
-                ${msg.username[0].toUpperCase()}
-            </div>
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
-        </div>`;
-    if (msg.replyTo) {
-        const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
-        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
-        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
-    }
-    content += `<div class="message-content"><audio controls src="${msg.audio}"></audio><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
-    
-    div.innerHTML = content;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-}
+// Send message
+document.getElementById('sendBtn').addEventListener('click', sendMessage);
+document.getElementById('messageInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendMessage();
+});
 
-function startReply(messageId) {
-    replyingTo = messageId;
-    const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
-    const repliedUsername = repliedMsg.querySelector('.username').textContent;
-    const repliedText = repliedMsg.querySelector('.message-content span')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio';
-    document.getElementById('reply-preview').textContent = `Replying to ${repliedUsername}: ${repliedText}`;
-    document.getElementById('reply-container').style.display = 'flex';
-    document.getElementById('message-input').focus();
-}
-
-function cancelReply() {
-    replyingTo = null;
-    document.getElementById('reply-container').style.display = 'none';
-}
-
-function startDM(recipientId, recipientUsername) {
-    if (!dmTabs[recipientId]) createDMTab(recipientId, recipientUsername);
-    switchTab(`dm-${recipientId}`);
-}
-
-function createDMTab(recipientId, recipientUsername) {
-    const tabs = document.getElementById('tabs');
-    const tabBtn = document.createElement('button');
-    tabBtn.className = 'tab-button';
-    tabBtn.setAttribute('data-tab', `dm-${recipientId}`);
-    tabBtn.textContent = `DM: ${recipientUsername}`;
-    tabBtn.onclick = () => switchTab(`dm-${recipientId}`);
-    tabs.appendChild(tabBtn);
-
-    const dmTab = document.createElement('div');
-    dmTab.id = `dm-${recipientId}`;
-    dmTab.className = 'chat-area flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto hidden';
-    dmTab.innerHTML = `<div class="chat-content flex flex-col space-y-2" style="color: white;"></div>`;
-    document.getElementById('dm-tabs').appendChild(dmTab);
-
-    dmTabs[recipientId] = { chat: dmTab.querySelector('.chat-content'), button: tabBtn };
-}
-
-function switchTab(tabId) {
-    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
-    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-    document.getElementById(tabId === 'main' ? 'chat-area' : tabId).classList.add('active');
-    activeTab = tabId;
-    const input = document.getElementById('message-input');
-    input.dataset.recipient = tabId.startsWith('dm-') ? tabId.replace('dm-', '') : '';
-    input.placeholder = tabId === 'main' ? 'Type a message...' : `DM to ${getRecipientUsername(input.dataset.recipient)}...`;
-}
-
-function sendMessage() {
-    const input = document.getElementById('message-input');
-    const text = input.value.trim();
-    if (!text) return;
-    const msg = { 
-        username, 
-        text, 
-        color: userColor, 
-        language: userLanguage, 
-        senderId: userId, 
-        messageId: Date.now().toString()
-    };
-    if (replyingTo) {
-        msg.replyTo = replyingTo;
-        replyingTo = null;
-        document.getElementById('reply-container').style.display = 'none';
-    }
-    if (input.dataset.recipient) {
-        msg.recipientId = input.dataset.recipient;
-        socket.emit('dm message', msg);
-    } else {
-        socket.emit('chat message', msg);
-    }
+async function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const content = input.value.trim();
+    if (!content) return;
+    socket.emit('sendMessage', {
+        channel: currentDM || currentChannel,
+        content,
+        type: 'text',
+        replyTo: document.getElementById('replyPreview').dataset.replyTo || null,
+        sender: user.username
+    });
     input.value = '';
-    socket.emit('stop typing', { tab: activeTab });
+    document.getElementById('replyPreview').classList.add('hidden');
 }
 
-function sendImage() {
-    const fileInput = document.getElementById('image-input');
-    const file = fileInput.files[0];
-    if (!file) return;
+// Reply to message
+function showReplyPrompt(messageId) {
+    const message = document.querySelector(`.message[data-id="${messageId}"]`);
+    const replyPreview = document.getElementById('replyPreview');
+    replyPreview.innerHTML = `Replying to ${message.querySelector('span').textContent}: ${message.querySelector('p').textContent}`;
+    replyPreview.dataset.replyTo = messageId;
+    replyPreview.classList.remove('hidden');
+}
 
-    const reader = new FileReader();
-    reader.onload = () => {
-        const msg = { 
-            username, 
-            image: reader.result,
-            color: userColor, 
-            senderId: userId, 
-            messageId: Date.now().toString()
+// Typing indicator
+document.getElementById('messageInput').addEventListener('input', () => {
+    socket.emit('typing', { channel: currentDM || currentChannel, username: user.username });
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => socket.emit('stopTyping', { channel: currentDM || currentChannel }), 2000);
+});
+let typingTimeout;
+socket.on('typing', ({ username }) => {
+    document.getElementById('typingIndicator').textContent = `${username} is typing...`;
+});
+socket.on('stopTyping', () => {
+    document.getElementById('typingIndicator').textContent = '';
+});
+
+// Channel switching
+document.querySelectorAll('.channel-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        currentChannel = btn.dataset.channel;
+        currentDM = null;
+        document.getElementById('currentChannel').textContent = currentChannel;
+        document.getElementById('callBtn').disabled = true;
+        socket.emit('joinChannel', { channel: currentChannel, username: user.username });
+    });
+});
+
+// DM handling
+async function loadDMs() {
+    const users = await (await fetch('/users')).json();
+    const dmList = document.getElementById('dmList');
+    dmList.innerHTML = '';
+    users.forEach(u => {
+        if (u.username !== user.username) {
+            const li = document.createElement('li');
+            li.innerHTML = `<button class="w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600">${u.username}</button>`;
+            li.querySelector('button').addEventListener('click', () => {
+                currentDM = u.username;
+                currentChannel = null;
+                document.getElementById('currentChannel').textContent = `DM: ${u.username}`;
+                document.getElementById('callBtn').disabled = false;
+                socket.emit('joinChannel', { channel: `DM_${user.username}_${u.username}`, username: user.username });
+            });
+            dmList.appendChild(li);
+        }
+    });
+}
+
+// Emoji picker
+const emojiPicker = document.querySelector('emoji-picker');
+document.getElementById('emojiBtn').addEventListener('click', () => {
+    emojiPicker.classList.toggle('hidden');
+});
+emojiPicker.addEventListener('emoji-click', (e) => {
+    document.getElementById('messageInput').value += e.detail.unicode;
+    emojiPicker.classList.add('hidden');
+});
+
+// Image upload
+document.getElementById('imageBtn').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async () => {
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = () => {
+            socket.emit('sendMessage', {
+                channel: currentDM || currentChannel,
+                content: reader.result,
+                type: 'image',
+                sender: user.username
+            });
         };
-        if (replyingTo) {
-            msg.replyTo = replyingTo;
-            replyingTo = null;
-            document.getElementById('reply-container').style.display = 'none';
-        }
-        if (document.getElementById('message-input').dataset.recipient) {
-            msg.recipientId = document.getElementById('message-input').dataset.recipient;
-            socket.emit('image message', msg);
-        } else {
-            socket.emit('image message', msg);
-        }
-        fileInput.value = '';
+        reader.readAsDataURL(file);
     };
-    reader.readAsDataURL(file);
-}
+    input.click();
+});
 
-async function startRecording() {
-    try {
+// Voice note
+document.getElementById('voiceBtn').addEventListener('click', async () => {
+    if (!mediaRecorder) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-        mediaRecorder.onstop = sendAudioMessage;
-        mediaRecorder.start();
-        document.getElementById('record-btn').innerHTML = '<i class="fas fa-stop"></i>';
-        document.getElementById('record-btn').onclick = stopRecording;
-    } catch (e) {
-        console.error('Error starting recording:', e);
-        alert('Failed to access microphone. Please allow permissions.');
-    }
-}
-
-function stopRecording() {
-    mediaRecorder.stop();
-    mediaRecorder.stream.getTracks().forEach(track => track.stop());
-    document.getElementById('record-btn').innerHTML = '<i class="fas fa-microphone"></i>';
-    document.getElementById('record-btn').onclick = startRecording;
-}
-
-function sendAudioMessage() {
-    const blob = new Blob(audioChunks, { type: 'audio/webm' });
-    const reader = new FileReader();
-    reader.onload = () => {
-        const msg = { 
-            username, 
-            audio: reader.result,
-            color: userColor, 
-            senderId: userId, 
-            messageId: Date.now().toString()
+        const chunks = [];
+        mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.onload = () => {
+                socket.emit('sendMessage', {
+                    channel: currentDM || currentChannel,
+                    content: reader.result,
+                    type: 'voice',
+                    sender: user.username
+                });
+            };
+            reader.readAsDataURL(blob);
         };
-        if (replyingTo) {
-            msg.replyTo = replyingTo;
-            replyingTo = null;
-            document.getElementById('reply-container').style.display = 'none';
-        }
-        if (document.getElementById('message-input').dataset.recipient) {
-            msg.recipientId = document.getElementById('message-input').dataset.recipient;
-            socket.emit('audio message', msg);
-        } else {
-            socket.emit('audio message', msg);
-        }
-    };
-    reader.readAsDataURL(blob);
-}
-
-function handleTyping() {
-    socket.emit('typing', { username, tab: activeTab });
-    clearTimeout(window.typingTimeout);
-    window.typingTimeout = setTimeout(() => socket.emit('stop typing', { tab: activeTab }), 1000);
-}
-
-function showColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'flex';
-    document.getElementById('color-picker').value = userColor;
-}
-
-function hideColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'none';
-}
-
-function changeColor() {
-    const newColor = document.getElementById('color-picker').value;
-    fetch('/change-color', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ color: newColor }),
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            userColor = newColor;
-            socket.emit('color change', { id: userId, color: newColor }); // Fixed to use userId
-            hideColorPicker();
-        } else {
-            console.error('Color change failed:', data.error);
-        }
-    }).catch(err => console.error('Error changing color:', err));
-}
-
-function updateLanguage() {
-    userLanguage = document.getElementById('language-select').value;
-    fetch('/update-language', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: userLanguage }),
-        credentials: 'include'
-    });
-}
-
-function getRecipientUsername(id) {
-    const user = Array.from(document.querySelectorAll('#user-list li')).find(li => li.onclick.toString().includes(id));
-    return user ? user.textContent.split(' ')[0] : 'Unknown';
-}
-
-function toggleMute() {
-    isMuted = !isMuted;
-    const muteBtn = document.getElementById('mute-btn');
-    muteBtn.innerHTML = `<i class="fas fa-volume-${isMuted ? 'mute' : 'up'} mr-2"></i>Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
-    // Ensure logout button remains unaffected
-    const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn.innerHTML !== '<i class="fas fa-sign-out-alt mr-2"></i>Logout') {
-        logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt mr-2"></i>Logout';
+        mediaRecorder.start();
+        document.getElementById('voiceBtn').classList.add('bg-red-600');
+    } else {
+        mediaRecorder.stop();
+        mediaRecorder = null;
+        document.getElementById('voiceBtn').classList.remove('bg-red-600');
     }
+});
+
+// Translation
+async function translateMessage(text, targetLang) {
+    const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`);
+    const data = await response.json();
+    return data.responseData.translatedText;
 }
 
-function playNotification() {
-    if (!isMuted) document.getElementById('notification-sound').play();
-}
+// WebRTC calls
+document.getElementById('callBtn').addEventListener('click', async () => {
+    createPeerConnection();
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioStream.getTracks().forEach(track => peerConnection.addTrack(track, audioStream));
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit('callUser', { to: currentDM, from: user.username });
+    socket.emit('webrtcSignal', { to: currentDM, signal: offer, from: user.username });
+});
 
-function openFullImage(src) {
-    const win = window.open('');
-    win.document.write(`<img src="${src}" style="max-width: 100%; max-height: 100vh;">`);
-}
+socket.on('incomingCall', ({ from }) => {
+    document.getElementById('callModal').classList.remove('hidden');
+    document.getElementById('caller').textContent = `${from} is calling...`;
+});
 
-function toggleEmojiPicker() {
-    const picker = document.getElementById('emoji-picker-container');
-    picker.classList.toggle('hidden');
-}
+document.getElementById('acceptCallBtn').addEventListener('click', async () => {
+    document.getElementById('callModal').classList.add('hidden');
+    createPeerConnection();
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioStream.getTracks().forEach(track => peerConnection.addTrack(track, audioStream));
+    socket.emit('acceptCall', { to: currentDM });
+});
+
+document.getElementById('declineCallBtn').addEventListener('click', () => {
+    document.getElementById('callModal').classList.add('hidden');
+    socket.emit('declineCall', { to: currentDM });
+});
+
+socket.on('webrtcSignal', async ({ signal, from }) => {
+    if (!peerConnection) createPeerConnection();
+    if (signal.type === 'offer') {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        socket.emit('webrtcSignal', { to: from, signal: answer, from: user.username });
+    } else if (signal.type === 'answer') {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+    } else {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(signal));
+    }
+});
+
+// Profile management
+document.getElementById('profileBtn').addEventListener('click', () => {
+    document.getElementById('profileModal').classList.remove('hidden');
+    document.getElementById('profilePicture').value = user.profilePicture;
+    document.getElementById('bio').value = user.bio;
+    document.getElementById('color').value = user.color;
+    document.getElementById('language').value = user.language;
+    document.getElementById('muteNotifications').checked = user.muteNotifications;
+});
+
+document.getElementById('closeProfileBtn').addEventListener('click', () => {
+    document.getElementById('profileModal').classList.add('hidden');
+});
+
+document.getElementById('profileForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const profilePicture = document.getElementById('profilePicture').value;
+    const bio = document.getElementById('bio').value;
+    const color = document.getElementById('color').value;
+    const language = document.getElementById('language').value;
+    const muteNotifications = document.getElementById('muteNotifications').checked;
+    await fetch('/updateProfile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profilePicture, bio, color, language, muteNotifications })
+    });
+    document.getElementById('profileModal').classList.add('hidden');
+    location.reload();
+});
+
+// Logout
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch('/logout', { method: 'POST' });
+    window.location.href = '/login';
+});
+
+// Initialize
+socket.emit('joinChannel', { channel: currentChannel, username: user.username });
+loadDMs();
