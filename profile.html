@@ -4,18 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UChat - Profile</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
-<body class="bg-gray-800 dark:bg-gray-900 flex items-center justify-center min-h-screen transition-colors duration-300">
-    <div class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl w-full max-w-md transform transition-all hover:scale-105">
-        <h2 class="text-2xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent mb-6 text-center">Your Profile</h2>
+<body class="bg-gradient-to-br from-blue-500 to-orange-500 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-md p-6 bg-white rounded-lg shadow-md">
+        <h2 class="text-2xl font-bold text-blue-600 text-center mb-6">Your Profile</h2>
         <div class="flex flex-col items-center space-y-4">
-            <img id="profile-picture" src="" alt="Profile Picture" class="w-32 h-32 rounded-full border-4 border-blue-500 transform hover:scale-110 transition-all">
-            <h3 id="profile-username" class="text-lg font-semibold text-gray-900 dark:text-white"></h3>
+            <img id="profile-picture" src="" alt="Profile Picture" class="w-32 h-32 rounded-full border-2 border-blue-600">
+            <h3 id="profile-username" class="text-xl font-semibold text-blue-600"></h3>
             <input type="file" id="profile-picture-input" accept="image/*" class="hidden">
-            <button onclick="document.getElementById('profile-picture-input').click()" class="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all">Change Picture</button>
-            <button onclick="window.location.href='/chat'" class="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all">Back to Chat</button>
+            <button onclick="document.getElementById('profile-picture-input').click()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-orange-500">Change Picture</button>
+            <button onclick="window.location.href='/app'" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600">Back to Chat</button>
         </div>
     </div>
 
@@ -26,7 +27,6 @@
             const data = await response.json();
             document.getElementById('profile-username').textContent = data.username;
             document.getElementById('profile-picture').src = data.profilePicture || 'https://via.placeholder.com/150';
-            applyTheme(data.theme);
         });
 
         document.getElementById('profile-picture-input').addEventListener('change', async () => {
@@ -45,14 +45,6 @@
             };
             reader.readAsDataURL(file);
         });
-
-        function applyTheme(theme) {
-            if (theme === 'light') {
-                document.documentElement.classList.remove('dark');
-            } else {
-                document.documentElement.classList.add('dark');
-            }
-        }
     </script>
 </body>
 </html>
