@@ -8,38 +8,38 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
 </head>
-<body class="bg-gradient-to-br from-blue-500 to-orange-500 flex items-center justify-center min-h-screen">
-    <div class="w-full max-w-md p-6 bg-white bg-opacity-80 rounded-xl shadow-lg">
-        <h2 class="text-3xl font-bold text-blue-600 text-center mb-6">Welcome to UChat</h2>
+<body class="bg-gradient-to-br from-teal-400 to-purple-500 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-md p-6 bg-white rounded-lg shadow-lg">
+        <h2 class="text-3xl font-bold text-teal-600 text-center mb-6">Welcome to UChat</h2>
         <div id="auth-container" class="space-y-6">
             <div id="login-form">
                 <div id="error-message" class="hidden text-red-500 text-center mb-4"></div>
                 <div class="space-y-4">
                     <div>
-                        <label for="login-username" class="block text-sm font-medium text-blue-700">Username</label>
-                        <input type="text" id="login-username" class="w-full px-4 py-2 bg-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Your username">
+                        <label for="login-username" class="block text-sm font-medium text-teal-700">Username</label>
+                        <input type="text" id="login-username" class="w-full px-4 py-2 bg-teal-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Your username">
                     </div>
                     <div>
-                        <label for="login-password" class="block text-sm font-medium text-blue-700">Password</label>
-                        <input type="password" id="login-password" class="w-full px-4 py-2 bg-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Your password">
+                        <label for="login-password" class="block text-sm font-medium text-teal-700">Password</label>
+                        <input type="password" id="login-password" class="w-full px-4 py-2 bg-teal-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Your password">
                     </div>
-                    <button onclick="login()" class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-orange-500 transition duration-200">Login</button>
-                    <p class="text-center text-blue-700">New user? <span class="text-orange-500 cursor-pointer" onclick="showRegister()">Register</span></p>
+                    <button onclick="login()" class="w-full bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-purple-500 transition duration-200">Login</button>
+                    <p class="text-center text-teal-700">New here? <span class="text-purple-500 cursor-pointer" onclick="showRegister()">Register</span></p>
                 </div>
             </div>
             <div id="register-form" class="hidden">
                 <div id="register-error" class="hidden text-red-500 text-center mb-4"></div>
                 <div class="space-y-4">
                     <div>
-                        <label for="register-username" class="block text-sm font-medium text-blue-700">Username</label>
-                        <input type="text" id="register-username" class="w-full px-4 py-2 bg-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Choose username">
+                        <label for="register-username" class="block text-sm font-medium text-teal-700">Username</label>
+                        <input type="text" id="register-username" class="w-full px-4 py-2 bg-teal-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Choose username">
                     </div>
                     <div>
-                        <label for="register-password" class="block text-sm font-medium text-blue-700">Password</label>
-                        <input type="password" id="register-password" class="w-full px-4 py-2 bg-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Create password">
+                        <label for="register-password" class="block text-sm font-medium text-teal-700">Password</label>
+                        <input type="password" id="register-password" class="w-full px-4 py-2 bg-teal-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Create password">
                     </div>
-                    <button onclick="register()" class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-orange-500 transition duration-200">Register</button>
-                    <p class="text-center text-blue-700">Already registered? <span class="text-orange-500 cursor-pointer" onclick="showLogin()">Login</span></p>
+                    <button onclick="register()" class="w-full bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-purple-500 transition duration-200">Register</button>
+                    <p class="text-center text-teal-700">Already registered? <span class="text-purple-500 cursor-pointer" onclick="showLogin()">Login</span></p>
                 </div>
             </div>
         </div>

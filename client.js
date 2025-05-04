@@ -1,5 +1,5 @@
 const socket = io('https://uchat-997p.onrender.com', { withCredentials: true, transports: ['websocket', 'polling'] });
-let username, userColor, userLanguage, userId, profilePicture, activeTab = 'General', dmTabs = {}, groupTabs = {}, isDarkMode = false, unreadCounts = {};
+let username, userColor, userLanguage, userId, profilePicture, activeTab = 'General', dmTabs = {}, groupTabs = {}, isMuted = false, unreadCounts = {};
 let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [], replyingTo = null, currentCallRecipient = null, isCalling = false;
 const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }] };
 
@@ -8,7 +8,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!response.ok) return window.location.href = '/';
     const data = await response.json();
     username = data.username; userColor = data.color; userLanguage = data.language; userId = data.userId; profilePicture = data.profilePicture;
-    document.getElementById('current-username').textContent = username;
+    document.getElementById('current-username').textContent = `Hello, ${username}`;
+    document.getElementById('language-select').value = userLanguage;
 
     const picker = document.querySelector('emoji-picker');
     picker.addEventListener('emoji-click', event => {
@@ -16,11 +17,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         toggleEmojiPicker();
     });
 
+    document.getElementById('sidebar').classList.add('open');
     loadInitialContent();
+    socket.emit('join channel', activeTab);
 });
 
 function loadInitialContent() {
-    socket.emit('join channel', activeTab);
     fetchMessages(activeTab);
     updateSidebar();
 }
@@ -28,21 +30,21 @@ function loadInitialContent() {
 socket.on('channels', channels => {
     const channelList = document.getElementById('channel-list');
     channelList.innerHTML = channels.map(channel => `
-        <li><button class="w-full text-left px-2 py-1 bg-gray-200 rounded hover:bg-blue-100 ${channel === activeTab ? 'bg-blue-200' : ''}" data-channel="${channel}" onclick="switchTab('${channel}')"># ${channel}</button></li>
+        <li><button class="w-full text-left px-2 py-1 bg-teal-50 rounded hover:bg-teal-100 ${channel === activeTab ? 'bg-teal-200' : ''}" data-channel="${channel}" onclick="switchTab('${channel}')"># ${channel}</button></li>
     `).join('');
 });
 
 socket.on('groups', groups => {
     const groupList = document.getElementById('group-list');
     groupList.innerHTML = groups.map(group => `
-        <li><button class="w-full text-left px-2 py-1 bg-gray-200 rounded hover:bg-blue-100" data-group="${group._id}" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>
+        <li><button class="w-full text-left px-2 py-1 bg-teal-50 rounded hover:bg-teal-100" data-group="${group._id}" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>
     `).join('');
 });
 
 socket.on('user list', users => {
     const ul = document.getElementById('user-list');
     ul.innerHTML = users.filter(u => u.userId !== userId).map(u => `
-        <li class="flex items-center space-x-2"><img src="${u.profilePicture || 'https://via.placeholder.com/32'}" alt="${u.username}" class="w-8 h-8 rounded-full"><span onclick="startDM('${u.userId}', '${u.username}')" class="cursor-pointer flex-1">${u.username}</span><button onclick="callUser('${u.userId}')" class="bg-blue-600 text-white p-1 rounded hover:bg-orange-500"><i class="fas fa-phone"></i></button></li>
+        <li class="flex items-center space-x-2"><img src="${u.profilePicture || 'https://via.placeholder.com/32'}" alt="${u.username}" class="w-8 h-8 rounded-full"><span onclick="startDM('${u.userId}', '${u.username}')" class="cursor-pointer flex-1">${u.username}</span><button onclick="callUser('${u.userId}')" class="bg-teal-600 text-white p-1 rounded hover:bg-purple-500"><i class="fas fa-phone"></i></button></li>
     `).join('');
     document.getElementById('user-count').textContent = users.length;
     document.getElementById('group-members').innerHTML = users.filter(u => u.userId !== userId).map(u => `<option value="${u.userId}">${u.username}</option>`).join('');
@@ -64,7 +66,7 @@ socket.on('group message', msg => {
 
 socket.on('dm message', msg => {
     const partnerId = msg.senderId === userId ? msg.recipientId : msg.senderId;
-    if (!dmTabs[partnerId]) startDM(partnerId, getUsernameFromId(partnerId));
+    if (!dmTabs[partnerId]) startDM(partnerId, msg.username === username ? getUsernameFromId(partnerId) : msg.username);
     if (activeTab === `dm-${partnerId}`) appendMessage(msg, dmTabs[partnerId].chat, true);
     else unreadCounts[`dm-${partnerId}`] = (unreadCounts[`dm-${partnerId}`] || 0) + 1;
     updateUnreadBadges();
@@ -88,17 +90,17 @@ socket.on('audio message', msg => {
 });
 
 socket.on('typing', data => {
-    if (activeTab === data.channel || activeTab === data.groupId) document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
+    if (activeTab === data.channel || activeTab === data.groupId || activeTab === `dm-${data.recipientId}`) document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
 });
 
 socket.on('stop typing', data => {
-    if (activeTab === data.channel || activeTab === data.groupId) document.getElementById('typing-indicator').textContent = '';
+    if (activeTab === data.channel || activeTab === data.groupId || activeTab === `dm-${data.recipientId}`) document.getElementById('typing-indicator').textContent = '';
 });
 
 socket.on('call-made', async data => {
     if (isCalling) { socket.emit('call-rejected', { to: data.from }); return; }
     currentCallRecipient = data.from;
-    document.getElementById('call-status').textContent = `${data.fromUsername} is calling...`;
+    document.getElementById('call-status').textContent = `${data.fromUsername} is calling you...`;
     document.getElementById('call-modal').style.display = 'flex';
     document.getElementById('accept-call').onclick = async () => { await acceptCall(data); };
     document.getElementById('decline-call').onclick = () => { socket.emit('call-rejected', { to: data.from }); document.getElementById('call-modal').style.display = 'none'; };
@@ -161,9 +163,9 @@ function endCall() {
 function hangUp() { if (currentCallRecipient) socket.emit('hang-up', { to: currentCallRecipient }); endCall(); }
 
 async function fetchMessages(tab) {
-    const chat = document.querySelector('.chat-content');
+    const chat = tab.startsWith('dm-') ? dmTabs[tab.replace('dm-', '')].chat : tab.startsWith('group-') ? groupTabs[tab.replace('group-', '')].chat : document.querySelector('.chat-content');
     chat.innerHTML = '';
-    const params = tab.startsWith('dm-') ? `recipientId=${tab.replace('dm-', '')}` : tab.includes('group-') ? `groupId=${tab.replace('group-', '')}` : `channel=${tab}`;
+    const params = tab.startsWith('dm-') ? `recipientId=${tab.replace('dm-', '')}` : tab.startsWith('group-') ? `groupId=${tab.replace('group-', '')}` : `channel=${tab}`;
     const response = await fetch(`/messages?${params}`, { credentials: 'include' });
     const messages = await response.json();
     messages.forEach(msg => {
@@ -183,10 +185,10 @@ function appendMessage(msg, chat, isDM) {
     let content = `<div class="flex items-center space-x-2"><img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full"><span class="username">${msg.username === username ? 'You' : msg.username}</span></div>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Message';
+        const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Media';
         content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><span>${msg.language !== userLanguage ? translate(msg.content, msg.language) : msg.content}</span><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button></div>`;
+    content += `<div class="message-content"><span>${msg.language !== userLanguage ? translate(msg.content, msg.language) : msg.content}</span><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button><div class="meta">${new Date(msg.timestamp).toLocaleTimeString()}</div></div>`;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -203,7 +205,7 @@ function appendImageMessage(msg, chat, isDM) {
         const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Image';
         content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><img src="${msg.content}" alt="Image" class="chat-image" onclick="openImage('${msg.content}')"><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button></div>`;
+    content += `<div class="message-content"><img src="${msg.content}" alt="Image" class="chat-image" onclick="openImage('${msg.content}')"><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button><div class="meta">${new Date(msg.timestamp).toLocaleTimeString()}</div></div>`;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -220,7 +222,7 @@ function appendAudioMessage(msg, chat, isDM) {
         const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Audio';
         content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><audio controls src="${msg.content}"></audio><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button></div>`;
+    content += `<div class="message-content"><audio controls src="${msg.content}"></audio><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button><div class="meta">${new Date(msg.timestamp).toLocaleTimeString()}</div></div>`;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -230,20 +232,26 @@ function startReply(messageId) {
     replyingTo = messageId;
     const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
     document.getElementById('reply-preview').textContent = `Replying to ${repliedMsg.querySelector('.username').textContent}: ${repliedMsg.querySelector('.message-content span')?.textContent || 'Media'}`;
-    document.getElementById('reply-container').classList.remove('hidden');
+    document.getElementById('reply-container').style.display = 'flex';
+    document.getElementById('message-input').focus();
 }
 
-function cancelReply() { replyingTo = null; document.getElementById('reply-container').classList.add('hidden'); }
+function cancelReply() {
+    replyingTo = null;
+    document.getElementById('reply-container').style.display = 'none';
+}
 
 function startDM(recipientId, recipientUsername) {
     if (!dmTabs[recipientId]) {
         dmTabs[recipientId] = { chat: document.createElement('div'), title: recipientUsername };
         dmTabs[recipientId].chat.className = 'chat-content';
         const li = document.createElement('li');
-        li.innerHTML = `<button class="w-full text-left px-2 py-1 bg-gray-200 rounded hover:bg-blue-100" data-dm="${recipientId}" onclick="switchTab('${recipientId}', 'dm')">${recipientUsername}</button>`;
+        li.innerHTML = `<button class="w-full text-left px-2 py-1 bg-teal-50 rounded hover:bg-teal-100" data-dm="${recipientId}" onclick="switchTab('${recipientId}', 'dm')">${recipientUsername}</button>`;
         document.getElementById('dm-list').appendChild(li);
+        socket.emit('join dm', recipientId);
     }
     switchTab(recipientId, 'dm');
+    fetchMessages(`dm-${recipientId}`);
 }
 
 function createGroup() {
@@ -266,12 +274,16 @@ function createGroup() {
 
 function switchTab(tabId, type = 'channel') {
     activeTab = type === 'channel' ? tabId : type === 'group' ? `group-${tabId}` : `dm-${tabId}`;
-    document.querySelectorAll('#sidebar button').forEach(btn => btn.classList.remove('bg-blue-200'));
-    document.querySelector(`[data-${type}="${tabId}"]`)?.classList.add('bg-blue-200');
+    document.querySelectorAll('#sidebar button').forEach(btn => btn.classList.remove('bg-teal-200'));
+    document.querySelector(`[data-${type}="${tabId}"]`)?.classList.add('bg-teal-200');
     document.getElementById('chat-title').textContent = type === 'channel' ? `#${tabId}` : type === 'group' ? (groupTabs[tabId]?.title || 'Group') : dmTabs[tabId]?.title || 'DM';
-    document.getElementById('chat-area').innerHTML = '<div class="chat-content"></div>';
+    const chat = type === 'dm' ? dmTabs[tabId].chat : type === 'group' ? groupTabs[tabId]?.chat : document.querySelector('.chat-content');
+    document.getElementById('chat-area').innerHTML = `<div class="chat-content"></div>`;
+    document.querySelector('.chat-content').appendChild(chat);
     fetchMessages(activeTab);
-    socket.emit(type === 'channel' ? 'join channel' : 'join group', type === 'channel' ? tabId : tabId);
+    if (type === 'channel') socket.emit('join channel', tabId);
+    else if (type === 'group') socket.emit('join group', tabId);
+    else if (type === 'dm') socket.emit('join dm', tabId);
 }
 
 function sendMessage() {
@@ -291,6 +303,7 @@ function sendMessage() {
         socket.emit('chat message', msg);
     }
     input.value = '';
+    socket.emit('stop typing', { channel: activeTab });
 }
 
 function sendImage() {
@@ -310,14 +323,19 @@ function sendImage() {
 }
 
 async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = sendAudioMessage;
-    mediaRecorder.start();
-    document.getElementById('record-btn').innerHTML = '<i class="fas fa-stop"></i>';
-    document.getElementById('record-btn').onclick = stopRecording;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = sendAudioMessage;
+        mediaRecorder.start();
+        document.getElementById('record-btn').innerHTML = '<i class="fas fa-stop"></i>';
+        document.getElementById('record-btn').onclick = stopRecording;
+    } catch (e) {
+        console.error('Error starting recording:', e);
+        alert('Failed to access microphone.');
+    }
 }
 
 function stopRecording() {
@@ -351,15 +369,41 @@ function handleTyping() {
     window.typingTimeout = setTimeout(() => socket.emit('stop typing', data), 1000);
 }
 
-function toggleTheme() {
-    isDarkMode = !isDarkMode;
-    document.body.classList.toggle('dark', isDarkMode);
+function showColorPicker() {
+    document.getElementById('color-picker-modal').style.display = 'flex';
+    document.getElementById('color-picker').value = userColor;
+}
+
+function hideColorPicker() {
+    document.getElementById('color-picker-modal').style.display = 'none';
+}
+
+function changeColor() {
+    const newColor = document.getElementById('color-picker').value;
+    fetch('/change-color', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ color: newColor }),
+        credentials: 'include'
+    }).then(res => res.json()).then(data => {
+        if (data.success) { userColor = newColor; hideColorPicker(); }
+    });
+}
+
+function updateLanguage() {
+    userLanguage = document.getElementById('language-select').value;
+    fetch('/update-language', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language: userLanguage }),
+        credentials: 'include'
+    });
 }
 
 function updateSidebar() {
     const users = Array.from(document.querySelectorAll('#user-list li')).map(li => ({ id: li.querySelector('span').onclick.toString().match(/'([^']+)'/)[1], username: li.querySelector('span').textContent }));
     document.getElementById('dm-list').innerHTML = users.map(u => `
-        <li><button class="w-full text-left px-2 py-1 bg-gray-200 rounded hover:bg-blue-100" data-dm="${u.id}" onclick="switchTab('${u.id}', 'dm')">${u.username}</button></li>
+        <li><button class="w-full text-left px-2 py-1 bg-teal-50 rounded hover:bg-teal-100" data-dm="${u.id}" onclick="switchTab('${u.id}', 'dm')">${u.username}</button></li>
     `).join('');
 }
 
@@ -373,14 +417,21 @@ function updateUnreadBadges() {
     document.querySelectorAll('#channel-list button, #group-list button, #dm-list button').forEach(btn => {
         const id = btn.getAttribute(`data-${btn.closest('ul').id.includes('channel') ? 'channel' : btn.closest('ul').id.includes('group') ? 'group' : 'dm'}`);
         const badge = document.createElement('span');
-        badge.className = 'bg-orange-500 text-white px-1 py-0.5 rounded-full text-xs ml-2';
+        badge.className = 'bg-purple-500 text-white px-1 py-0.5 rounded-full text-xs ml-2';
         badge.textContent = unreadCounts[id] || '';
         btn.querySelector('span.badge')?.remove();
         if (unreadCounts[id]) btn.appendChild(badge.cloneNode(true));
     });
 }
 
-function playNotification() { if (!isMuted) document.getElementById('notification-sound').play(); }
+function toggleMute() {
+    isMuted = !isMuted;
+    document.getElementById('mute-btn').textContent = `Mute (${isMuted ? 'On' : 'Off'})`;
+}
+
+function playNotification() {
+    if (!isMuted) document.getElementById('notification-sound').play();
+}
 
 function openImage(src) {
     const win = window.open('');
@@ -394,5 +445,5 @@ function toggleEmojiPicker() {
 async function translate(text, fromLang) {
     const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${fromLang}|${userLanguage}`);
     const data = await response.json();
-    return data.responseData.translatedText + (fromLang !== userLanguage ? ` (${fromLang}: ${text})` : '');
+    return data.responseData.translatedText + (fromLang !== userLanguage ? ` <span class="meta">(${fromLang}: ${text})</span>` : '');
 }

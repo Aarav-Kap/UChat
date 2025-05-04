@@ -11,70 +11,86 @@
     <script src="https://unpkg.com/emoji-picker-element@^1.0.0" type="module"></script>
     <script src="/client.js" defer></script>
 </head>
-<body class="bg-gradient-to-br from-blue-500 to-orange-500 font-sans text-gray-800 flex flex-col h-screen">
+<body class="bg-gradient-to-br from-teal-400 to-purple-500 font-sans text-gray-800 flex flex-col h-screen">
     <header class="bg-white p-4 shadow-md flex items-center justify-between">
-        <h2 id="current-username" class="text-xl font-bold text-blue-600"></h2>
+        <h2 id="current-username" class="text-xl font-bold text-teal-600"></h2>
         <div class="space-x-2">
-            <button onclick="toggleTheme()" class="bg-blue-600 text-white px-2 py-1 rounded hover:bg-orange-500"><i class="fas fa-adjust"></i></button>
-            <button onclick="window.location.href='/profile'" class="bg-blue-600 text-white px-2 py-1 rounded hover:bg-orange-500"><i class="fas fa-user"></i></button>
+            <button onclick="showColorPicker()" class="bg-teal-600 text-white px-2 py-1 rounded hover:bg-purple-500"><i class="fas fa-palette"></i></button>
+            <button id="mute-btn" onclick="toggleMute()" class="bg-teal-600 text-white px-2 py-1 rounded hover:bg-purple-500">Mute (Off)</button>
+            <select id="language-select" onchange="updateLanguage()" class="bg-teal-50 text-teal-700 p-1 rounded">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="zh">Chinese</option>
+            </select>
+            <button onclick="window.location.href='/profile'" class="bg-teal-600 text-white px-2 py-1 rounded hover:bg-purple-500"><i class="fas fa-user"></i></button>
             <button onclick="window.location.href='/logout'" class="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-500"><i class="fas fa-sign-out-alt"></i></button>
         </div>
     </header>
     <div class="flex flex-1 overflow-hidden">
-        <!-- Sidebar -->
         <aside id="sidebar" class="w-64 bg-white p-4 overflow-y-auto border-r border-gray-200">
-            <h3 class="text-blue-600 font-semibold mb-2">Channels</h3>
+            <h3 class="text-teal-600 font-semibold mb-2">Channels</h3>
             <ul id="channel-list" class="space-y-1 mb-4"></ul>
-            <h3 class="text-blue-600 font-semibold mb-2">Group Chats</h3>
+            <h3 class="text-teal-600 font-semibold mb-2">Group Chats</h3>
             <div id="group-section">
-                <input id="group-name" type="text" placeholder="New group name" class="w-full px-2 py-1 bg-gray-100 rounded mb-2">
-                <select id="group-members" multiple class="w-full px-2 py-1 bg-gray-100 rounded mb-2" size="5"></select>
-                <button onclick="createGroup()" class="w-full bg-blue-600 text-white px-2 py-1 rounded hover:bg-orange-500">Create Group</button>
+                <input id="group-name" type="text" placeholder="New group name" class="w-full px-2 py-1 bg-teal-50 rounded mb-2">
+                <select id="group-members" multiple class="w-full px-2 py-1 bg-teal-50 rounded mb-2" size="5"></select>
+                <button onclick="createGroup()" class="w-full bg-teal-600 text-white px-2 py-1 rounded hover:bg-purple-500">Create Group</button>
                 <ul id="group-list" class="space-y-1 mt-2"></ul>
             </div>
-            <h3 class="text-blue-600 font-semibold mb-2">DMs</h3>
+            <h3 class="text-teal-600 font-semibold mb-2">DMs</h3>
             <ul id="dm-list" class="space-y-1"></ul>
-            <h3 class="text-blue-600 font-semibold mb-2">Users Online: <span id="user-count">0</span></h3>
+            <h3 class="text-teal-600 font-semibold mb-2">Online Users: <span id="user-count">0</span></h3>
             <ul id="user-list" class="space-y-1"></ul>
         </aside>
-        <!-- Chat Area -->
-        <main id="chat-container" class="flex-1 p-4 overflow-y-auto">
+        <main id="chat-container" class="flex-1 p-4 overflow-y-auto flex flex-col">
             <div id="chat-header" class="bg-white p-2 rounded-t-lg shadow-md mb-2 flex items-center justify-between">
-                <h3 id="chat-title" class="text-lg font-bold text-blue-600"></h3>
-                <span id="unread-count" class="bg-orange-500 text-white px-2 py-1 rounded-full text-sm hidden"></span>
+                <h3 id="chat-title" class="text-lg font-bold text-teal-600"></h3>
+                <span id="unread-count" class="bg-purple-500 text-white px-2 py-1 rounded-full text-sm hidden"></span>
             </div>
-            <div id="chat-area" class="bg-white rounded-b-lg p-4 h-[calc(100%-3rem)] overflow-y-auto shadow-md">
+            <div id="chat-area" class="bg-white rounded-b-lg p-4 flex-1 overflow-y-auto shadow-md">
                 <div class="chat-content"></div>
             </div>
             <div id="typing-indicator" class="text-gray-500 italic mt-2"></div>
             <div class="mt-4 flex items-center space-x-2">
-                <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500" oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+                <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-teal-500" oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
                 <button onclick="toggleEmojiPicker()" class="bg-gray-200 text-gray-800 p-2 rounded-lg hover:bg-gray-300"><i class="fas fa-smile"></i></button>
                 <input type="file" id="image-input" accept="image/*" class="hidden" onchange="sendImage()">
                 <button onclick="document.getElementById('image-input').click()" class="bg-gray-200 text-gray-800 p-2 rounded-lg hover:bg-gray-300"><i class="fas fa-image"></i></button>
                 <button id="record-btn" onclick="startRecording()" class="bg-gray-200 text-gray-800 p-2 rounded-lg hover:bg-gray-300"><i class="fas fa-microphone"></i></button>
-                <button onclick="sendMessage()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-orange-500">Send</button>
+                <button onclick="sendMessage()" class="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-purple-500">Send</button>
             </div>
-            <div id="reply-container" class="hidden bg-gray-100 p-2 rounded-lg flex items-center space-x-2 mt-2">
-                <p id="reply-preview" class="text-sm text-gray-600 truncate"></p>
-                <button onclick="cancelReply()" class="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-500">Cancel</button>
+            <div id="reply-container" class="bg-teal-50 p-2 rounded-lg flex items-center space-x-2 mt-2">
+                <p id="reply-preview" class="text-sm text-teal-700 truncate"></p>
+                <button onclick="cancelReply()" class="bg-purple-500 text-white px-2 py-1 rounded hover:bg-purple-600">Cancel</button>
             </div>
             <div id="emoji-picker-container" class="hidden absolute bottom-16 right-4 bg-white border rounded-lg p-2 shadow-md">
                 <emoji-picker></emoji-picker>
             </div>
         </main>
     </div>
+    <div id="color-picker-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white p-6 rounded-lg w-full max-w-sm">
+            <h3 class="text-teal-600">Pick a Color</h3>
+            <input type="color" id="color-picker" class="w-full h-10 mt-2">
+            <div class="flex space-x-2 mt-4">
+                <button onclick="changeColor()" class="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-purple-500">Apply</button>
+                <button onclick="hideColorPicker()" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600">Cancel</button>
+            </div>
+        </div>
+    </div>
     <div id="call-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
         <div class="bg-white p-4 rounded-lg w-full max-w-sm">
-            <p id="call-status" class="text-blue-600"></p>
+            <p id="call-status" class="text-teal-600"></p>
             <div class="flex space-x-2 mt-4">
-                <button id="accept-call" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-orange-500">Accept</button>
+                <button id="accept-call" class="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-purple-500">Accept</button>
                 <button id="decline-call" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-500">Decline</button>
             </div>
         </div>
     </div>
     <div id="call-interface" class="fixed bottom-4 right-4 bg-white p-4 rounded-lg hidden shadow-md">
-        <p id="call-with" class="text-blue-600"></p>
+        <p id="call-with" class="text-teal-600"></p>
         <button onclick="hangUp()" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-500 mt-2">Hang Up</button>
     </div>
     <audio id="remote-audio" autoplay></audio>

@@ -18,7 +18,7 @@ mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    color: { type: String, default: '#1E90FF' },
+    color: { type: String, default: '#20B2AA' },
     language: { type: String, default: 'en' },
     profilePicture: { type: String, default: '' },
 });
@@ -166,7 +166,7 @@ app.get('/logout', (req, res) => {
 });
 
 const connectedUsers = new Map();
-const channels = ['General', 'Tech', 'Gaming', 'Art', 'Music'];
+const channels = ['General', 'Math', 'Science', 'History', 'English'];
 
 io.on('connection', async (socket) => {
     const session = socket.request.session;
@@ -181,6 +181,7 @@ io.on('connection', async (socket) => {
 
     socket.on('join channel', (channel) => socket.join(channel));
     socket.on('join group', (groupId) => socket.join(groupId));
+    socket.on('join dm', (recipientId) => socket.join(`dm-${recipientId}`));
 
     socket.on('chat message', async (msg) => {
         const message = new Message({
@@ -208,7 +209,7 @@ io.on('connection', async (socket) => {
             senderId: msg.senderId,
             groupId: msg.groupId,
             profilePicture: msg.profilePicture,
-            unreadBy: (await Group.findById(msg.groupId)).members.filter(m => m.toString() !== msg.senderId),
+            unreadBy: (await Group.findById(msg.groupId)).members.filter(m => m.toString() !== msg.senderId).map(m => m.toString()),
         });
         await message.save();
         io.to(msg.groupId).emit('group message', message);
@@ -230,6 +231,7 @@ io.on('connection', async (socket) => {
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
         if (recipient) io.to(recipient.id).emit('dm message', message);
         socket.emit('dm message', message);
+        socket.to(`dm-${msg.recipientId}`).emit('dm message', message);
     });
 
     socket.on('image message', async (msg) => {
@@ -244,13 +246,14 @@ io.on('connection', async (socket) => {
             groupId: msg.groupId,
             recipientId: msg.recipientId,
             profilePicture: msg.profilePicture,
-            unreadBy: msg.recipientId ? [msg.recipientId] : msg.groupId ? (await Group.findById(msg.groupId)).members.filter(m => m.toString() !== msg.senderId) : Array.from(connectedUsers.values()).filter(u => u.userId !== msg.senderId).map(u => u.userId),
+            unreadBy: msg.recipientId ? [msg.recipientId] : msg.groupId ? (await Group.findById(msg.groupId)).members.filter(m => m.toString() !== msg.senderId).map(m => m.toString()) : Array.from(connectedUsers.values()).filter(u => u.userId !== msg.senderId).map(u => u.userId),
         });
         await message.save();
         if (msg.recipientId) {
             const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
             if (recipient) io.to(recipient.id).emit('image message', message);
             socket.emit('image message', message);
+            socket.to(`dm-${msg.recipientId}`).emit('image message', message);
         } else if (msg.groupId) {
             io.to(msg.groupId).emit('image message', message);
         } else {
@@ -270,13 +273,14 @@ io.on('connection', async (socket) => {
             groupId: msg.groupId,
             recipientId: msg.recipientId,
             profilePicture: msg.profilePicture,
-            unreadBy: msg.recipientId ? [msg.recipientId] : msg.groupId ? (await Group.findById(msg.groupId)).members.filter(m => m.toString() !== msg.senderId) : Array.from(connectedUsers.values()).filter(u => u.userId !== msg.senderId).map(u => u.userId),
+            unreadBy: msg.recipientId ? [msg.recipientId] : msg.groupId ? (await Group.findById(msg.groupId)).members.filter(m => m.toString() !== msg.senderId).map(m => m.toString()) : Array.from(connectedUsers.values()).filter(u => u.userId !== msg.senderId).map(u => u.userId),
         });
         await message.save();
         if (msg.recipientId) {
             const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
             if (recipient) io.to(recipient.id).emit('audio message', message);
             socket.emit('audio message', message);
+            socket.to(`dm-${msg.recipientId}`).emit('audio message', message);
         } else if (msg.groupId) {
             io.to(msg.groupId).emit('audio message', message);
         } else {
@@ -287,11 +291,13 @@ io.on('connection', async (socket) => {
     socket.on('typing', (data) => {
         if (data.channel) socket.to(data.channel).emit('typing', data);
         else if (data.groupId) socket.to(data.groupId).emit('typing', data);
+        else if (data.recipientId) socket.to(`dm-${data.recipientId}`).emit('typing', data);
     });
 
     socket.on('stop typing', (data) => {
         if (data.channel) socket.to(data.channel).emit('stop typing', data);
         else if (data.groupId) socket.to(data.groupId).emit('stop typing', data);
+        else if (data.recipientId) socket.to(`dm-${data.recipientId}`).emit('stop typing', data);
     });
 
     socket.on('call-user', (data) => {
