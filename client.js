@@ -28,14 +28,14 @@ function loadInitialContent() {
 socket.on('channels', channels => {
     const channelList = document.getElementById('channel-list');
     channelList.innerHTML = channels.map(channel => `
-        <li><button class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800 ${channel === activeTab ? 'bg-coral-500' : ''}" onclick="switchTab('${channel}')"># ${channel}</button></li>
+        <li><button class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800 ${channel === activeTab ? 'bg-teal-500' : ''}" onclick="switchTab('${channel}')"># ${channel}</button></li>
     `).join('');
 });
 
 socket.on('groups', groups => {
     const groupList = document.getElementById('group-list');
     groupList.innerHTML = groups.map(group => `
-        <li><button class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>
+        <li><button class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>
     `).join('');
 });
 
@@ -43,8 +43,8 @@ socket.on('user list', users => {
     const dmList = document.getElementById('dm-list');
     dmList.innerHTML = users.filter(u => u.userId !== userId).map(u => `
         <li class="flex items-center space-x-2">
-            <button class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800 flex-1 text-left" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</button>
-            <button onclick="callUser('${u.userId}')" class="bg-coral-500 text-white px-4 py-2 rounded-full hover:bg-coral-600"><i class="fas fa-phone"></i></button>
+            <button class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800 flex-1 text-left" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</button>
+            <button onclick="callUser('${u.userId}')" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600"><i class="fas fa-phone"></i></button>
         </li>
     `).join('');
     document.getElementById('group-members').innerHTML = users.filter(u => u.userId !== userId).map(u => `<option value="${u.userId}">${u.username}</option>`).join('');
@@ -85,6 +85,16 @@ socket.on('typing', data => {
 
 socket.on('stop typing', data => {
     if (activeTab === data.channel || activeTab === data.groupId || activeTab === `dm-${data.recipientId}`) document.getElementById('typing-indicator').textContent = '';
+});
+
+socket.on('reaction update', data => {
+    const messageEl = document.querySelector(`[data-message-id="${data.messageId}"]`);
+    if (messageEl) {
+        const reactionsEl = messageEl.querySelector('.reactions');
+        reactionsEl.innerHTML = Object.entries(data.reactions).map(([reaction, users]) => `
+            <span class="reaction" onclick="toggleReaction('${data.messageId}', '${reaction}')">${reaction} ${users.length}</span>
+        `).join('');
+    }
 });
 
 socket.on('call-made', async data => {
@@ -152,10 +162,11 @@ function endCall() {
 
 function hangUp() { if (currentCallRecipient) socket.emit('hang-up', { to: currentCallRecipient }); endCall(); }
 
-async function fetchMessages(tab) {
+async function fetchMessages(tab, date = null) {
     const chat = document.querySelector('.chat-content');
     chat.innerHTML = '';
     const params = tab.startsWith('dm-') ? `recipientId=${tab.replace('dm-', '')}` : tab.startsWith('group-') ? `groupId=${tab.replace('group-', '')}` : `channel=${tab}`;
+    if (date) params += `&date=${date}`;
     const response = await fetch(`/messages?${params}`, { credentials: 'include' });
     const messages = await response.json();
     messages.forEach(msg => {
@@ -170,13 +181,34 @@ function appendMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.messageId = msg._id;
-    let content = `<div class="flex items-center space-x-2"><img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full"><span class="username">${msg.username === username ? 'You' : msg.username}</span></div>`;
+    let content = `
+        <div class="message-timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+        <div class="message-content">
+            <div class="flex items-center space-x-2">
+                <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
+                <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+            </div>
+    `;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Media';
+        const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Media';
         content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><span>${msg.language !== userLanguage ? translate(msg.content, msg.language) : msg.content}</span><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button><button class="pin-btn" onclick="pinMessage('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button><div class="meta">${new Date(msg.timestamp).toLocaleTimeString()}</div></div>`;
+    content += `
+            <div class="message-body">
+                <span>${msg.content}</span>
+            </div>
+            <div class="actions">
+                <button onclick="translateMessage('${msg._id}', '${msg.content}')">Translate</button>
+                <button onclick="startReply('${msg._id}')">Reply</button>
+                <button onclick="toggleReaction('${msg._id}', '👍')">👍</button>
+                <button onclick="toggleReaction('${msg._id}', '❤️')">❤️</button>
+            </div>
+            <div class="reactions">
+                ${Object.entries(msg.reactions).map(([reaction, users]) => `<span class="reaction" onclick="toggleReaction('${msg._id}', '${reaction}')">${reaction} ${users.length}</span>`).join('')}
+            </div>
+        </div>
+    `;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -186,13 +218,33 @@ function appendImageMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.messageId = msg._id;
-    let content = `<div class="flex items-center space-x-2"><img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full"><span class="username">${msg.username === username ? 'You' : msg.username}</span></div>`;
+    let content = `
+        <div class="message-timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+        <div class="message-content">
+            <div class="flex items-center space-x-2">
+                <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
+                <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+            </div>
+    `;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Image';
+        const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Image';
         content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><img src="${msg.content}" alt="Image" class="chat-image" onclick="openImage('${msg.content}')"><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button><button class="pin-btn" onclick="pinMessage('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button><div class="meta">${new Date(msg.timestamp).toLocaleTimeString()}</div></div>`;
+    content += `
+            <div class="message-body">
+                <img src="${msg.content}" alt="Image" class="chat-image" onclick="openImage('${msg.content}')">
+            </div>
+            <div class="actions">
+                <button onclick="startReply('${msg._id}')">Reply</button>
+                <button onclick="toggleReaction('${msg._id}', '👍')">👍</button>
+                <button onclick="toggleReaction('${msg._id}', '❤️')">❤️</button>
+            </div>
+            <div class="reactions">
+                ${Object.entries(msg.reactions).map(([reaction, users]) => `<span class="reaction" onclick="toggleReaction('${msg._id}', '${reaction}')">${reaction} ${users.length}</span>`).join('')}
+            </div>
+        </div>
+    `;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -202,22 +254,50 @@ function appendAudioMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.messageId = msg._id;
-    let content = `<div class="flex items-center space-x-2"><img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full"><span class="username">${msg.username === username ? 'You' : msg.username}</span></div>`;
+    let content = `
+        <div class="message-timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+        <div class="message-content">
+            <div class="flex items-center space-x-2">
+                <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
+                <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+            </div>
+    `;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Audio';
+        const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Audio';
         content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><audio controls src="${msg.content}"></audio><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button><button class="pin-btn" onclick="pinMessage('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button><div class="meta">${new Date(msg.timestamp).toLocaleTimeString()}</div></div>`;
+    content += `
+            <div class="message-body">
+                <audio controls src="${msg.content}"></audio>
+            </div>
+            <div class="actions">
+                <button onclick="startReply('${msg._id}')">Reply</button>
+                <button onclick="toggleReaction('${msg._id}', '👍')">👍</button>
+                <button onclick="toggleReaction('${msg._id}', '❤️')">❤️</button>
+            </div>
+            <div class="reactions">
+                ${Object.entries(msg.reactions).map(([reaction, users]) => `<span class="reaction" onclick="toggleReaction('${msg._id}', '${reaction}')">${reaction} ${users.length}</span>`).join('')}
+            </div>
+        </div>
+    `;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
 }
 
+async function translateMessage(messageId, text) {
+    const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${userLanguage}`);
+    const data = await response.json();
+    const translatedText = data.responseData.translatedText;
+    const messageEl = document.querySelector(`[data-message-id="${messageId}"] .message-body span`);
+    messageEl.textContent = translatedText + ` (Original: ${text})`;
+}
+
 function startReply(messageId) {
     replyingTo = messageId;
     const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
-    document.getElementById('reply-preview').textContent = `Replying to ${repliedMsg.querySelector('.username').textContent}: ${repliedMsg.querySelector('.message-content span')?.textContent || 'Media'}`;
+    document.getElementById('reply-preview').textContent = `Replying to ${repliedMsg.querySelector('.username').textContent}: ${repliedMsg.querySelector('.message-body span')?.textContent || 'Media'}`;
     document.getElementById('reply-container').style.display = 'flex';
     document.getElementById('message-input').focus();
 }
@@ -227,14 +307,14 @@ function cancelReply() {
     document.getElementById('reply-container').style.display = 'none';
 }
 
-async function pinMessage(messageId) {
-    await fetch('/pin-message', {
+async togleReaction(messageId, reaction) {
+    await fetch('/react-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageId }),
+        body: JSON.stringify({ messageId, reaction }),
         credentials: 'include'
     });
-    fetchMessages(activeTab);
+    socket.emit('reaction', { messageId, reaction, userId });
 }
 
 function startDM(recipientId, recipientUsername) {
@@ -276,7 +356,13 @@ function switchTab(tabId, type = 'channel') {
     if (type === 'channel') socket.emit('join channel', tabId);
     else if (type === 'group') socket.emit('join group', tabId);
     else if (type === 'dm') socket.emit('join dm', tabId);
-    closeAllMenus();
+    showTab('chat');
+}
+
+function showTab(tab) {
+    document.querySelectorAll('#channels-tab, #dms-tab, #groups-tab, #settings-tab, #chat-area').forEach(el => el.classList.add('hidden'));
+    if (tab !== 'chat') document.getElementById(`${tab}-tab`).classList.remove('hidden');
+    else document.getElementById('chat-area').classList.remove('hidden');
 }
 
 function sendMessage() {
@@ -424,35 +510,9 @@ function toggleEmojiPicker() {
     document.getElementById('emoji-picker-container').classList.toggle('hidden');
 }
 
-async function translate(text, fromLang) {
-    const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${fromLang}|${userLanguage}`);
-    const data = await response.json();
-    return data.responseData.translatedText + (fromLang !== userLanguage ? ` <span class="meta">(${fromLang}: ${text})</span>` : '');
-}
-
-function toggleMenu(menu) {
-    closeAllMenus();
-    document.getElementById(`${menu}-menu`).classList.toggle('hidden');
-}
-
-function closeAllMenus() {
-    document.querySelectorAll('.absolute').forEach(menu => menu.classList.add('hidden'));
-}
-
-async function searchMessages() {
-    const query = document.getElementById('search-input').value.trim().toLowerCase();
-    const chat = document.querySelector('.chat-content');
-    chat.innerHTML = '';
-    const params = activeTab.startsWith('dm-') ? `recipientId=${activeTab.replace('dm-', '')}` : activeTab.startsWith('group-') ? `groupId=${activeTab.replace('group-', '')}` : `channel=${activeTab}`;
-    const response = await fetch(`/messages?${params}`, { credentials: 'include' });
-    const messages = await response.json();
-    const filteredMessages = messages.filter(msg => msg.content.toLowerCase().includes(query));
-    filteredMessages.forEach(msg => {
-        if (msg.type === 'text') appendMessage(msg, chat, !!msg.recipientId);
-        else if (msg.type === 'image') appendImageMessage(msg, chat, !!msg.recipientId);
-        else if (msg.type === 'audio') appendAudioMessage(msg, chat, !!msg.recipientId);
-    });
-    chat.scrollTop = chat.scrollHeight;
+function loadSnapshot() {
+    const date = document.getElementById('snapshot-date').value;
+    if (date) fetchMessages(activeTab, date);
 }
 
 function getUsernameFromId(id) {

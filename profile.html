@@ -7,20 +7,21 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen transition-colors duration-300">
-    <div class="bg-white p-8 rounded-full shadow-2xl text-center">
-        <h2 class="text-2xl font-bold text-blue-900 mb-6 flex items-center justify-center">
+<body class="bg-gray-50 flex items-center justify-center min-h-screen transition-colors duration-300">
+    <div class="bg-white p-8 rounded-lg shadow-lg text-center">
+        <h2 class="text-2xl font-bold text-navy-900 mb-6 flex items-center justify-center">
             <svg class="w-6 h-6 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10z"></path>
+                <path d="M12 2v20m-8-4h16"></path>
+                <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
             </svg>
             UChat Profile
         </h2>
         <div class="flex flex-col items-center space-y-4">
-            <img id="profile-picture" src="" alt="Profile Picture" class="w-32 h-32 rounded-full border-2 border-blue-900">
-            <h3 id="profile-username" class="text-xl font-semibold text-blue-900"></h3>
+            <img id="profile-picture" src="" alt="Profile Picture" class="w-32 h-32 rounded-full border-2 border-navy-900">
+            <h3 id="profile-username" class="text-xl font-semibold text-navy-900"></h3>
             <input type="file" id="profile-picture-input" accept="image/*" class="hidden">
-            <button onclick="document.getElementById('profile-picture-input').click()" class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800">Change Picture</button>
-            <button onclick="window.location.href='/app'" class="bg-gray-500 text-white px-4 py-2 rounded-full hover:bg-gray-600">Back to Chat</button>
+            <button onclick="document.getElementById('profile-picture-input').click()" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Change Picture</button>
+            <button onclick="window.location.href='/app'" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600">Back to Chat</button>
         </div>
     </div>
 

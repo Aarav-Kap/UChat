@@ -15,7 +15,7 @@ mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    color: { type: String, default: '#1E3A8A' },
+    color: { type: String, default: '#0A2463' },
     language: { type: String, default: 'en' },
     profilePicture: { type: String, default: '' },
     theme: { type: String, default: 'light' },
@@ -39,7 +39,7 @@ const messageSchema = new mongoose.Schema({
     replyTo: { type: String },
     profilePicture: { type: String },
     timestamp: { type: Date, default: Date.now },
-    pinned: { type: Boolean, default: false },
+    reactions: { type: Map, of: [String], default: {} },
 });
 const Message = mongoose.model('Message', messageSchema);
 
@@ -145,10 +145,17 @@ app.post('/create-group', async (req, res) => {
 });
 
 app.get('/messages', async (req, res) => {
-    const { channel, groupId, recipientId } = req.query;
+    const { channel, groupId, recipientId, date } = req.query;
     const query = channel ? { channel } : groupId ? { groupId } : recipientId ? {
         $or: [{ senderId: req.session.userId, recipientId }, { senderId: recipientId, recipientId: req.session.userId }]
     } : {};
+    if (date) {
+        const start = new Date(date);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(date);
+        end.setHours(23, 59, 59, 999);
+        query.timestamp = { $gte: start, $lte: end };
+    }
     const messages = await Message.find(query).sort({ timestamp: 1 }).limit(200);
     res.json(messages);
 });
@@ -158,10 +165,15 @@ app.get('/groups', async (req, res) => {
     res.json(groups);
 });
 
-app.post('/pin-message', async (req, res) => {
-    const { messageId } = req.body;
+app.post('/react-message', async (req, res) => {
+    const { messageId, reaction } = req.body;
     const message = await Message.findById(messageId);
-    message.pinned = !message.pinned;
+    if (!message.reactions.has(reaction)) message.reactions.set(reaction, []);
+    const userReactions = message.reactions.get(reaction);
+    const userIndex = userReactions.indexOf(req.session.userId);
+    if (userIndex === -1) userReactions.push(req.session.userId);
+    else userReactions.splice(userIndex, 1);
+    if (userReactions.length === 0) message.reactions.delete(reaction);
     await message.save();
     res.json({ success: true });
 });
@@ -225,6 +237,19 @@ io.on('connection', async (socket) => {
             socket.emit('audio message', message);
         } else if (msg.groupId) io.to(msg.groupId).emit('audio message', message);
         else io.to(msg.channel).emit('audio message', message);
+    });
+
+    socket.on('reaction', async (data) => {
+        const message = await Message.findById(data.messageId);
+        if (!message.reactions.has(data.reaction)) message.reactions.set(data.reaction, []);
+        const userReactions = message.reactions.get(data.reaction);
+        const userIndex = userReactions.indexOf(data.userId);
+        if (userIndex === -1) userReactions.push(data.userId);
+        else userReactions.splice(userIndex, 1);
+        if (userReactions.length === 0) message.reactions.delete(data.reaction);
+        await message.save();
+        const target = message.recipientId ? `dm-${message.recipientId}` : message.groupId ? message.groupId : message.channel;
+        io.to(target).emit('reaction update', { messageId: data.messageId, reaction: data.reaction, users: userReactions });
     });
 
     socket.on('typing', (data) => {

@@ -11,111 +11,113 @@
     <script src="https://unpkg.com/emoji-picker-element@^1.0.0" type="module"></script>
     <script src="/client.js" defer></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center transition-colors duration-300">
-    <div class="relative w-full max-w-4xl h-[80vh] flex items-center justify-center">
-        <!-- Circular Navigation -->
-        <div class="absolute w-16 h-16 rounded-full bg-blue-900 text-white flex items-center justify-center hover:bg-blue-800 transition-all duration-300 cursor-pointer" style="top: 10%; left: 50%; transform: translateX(-50%);">
-            <i class="fas fa-hashtag" onclick="toggleMenu('channels')"></i>
-        </div>
-        <div class="absolute w-16 h-16 rounded-full bg-blue-900 text-white flex items-center justify-center hover:bg-blue-800 transition-all duration-300 cursor-pointer" style="top: 30%; right: 10%;">
-            <i class="fas fa-users" onclick="toggleMenu('groups')"></i>
-        </div>
-        <div class="absolute w-16 h-16 rounded-full bg-blue-900 text-white flex items-center justify-center hover:bg-blue-800 transition-all duration-300 cursor-pointer" style="bottom: 30%; right: 10%;">
-            <i class="fas fa-envelope" onclick="toggleMenu('dms')"></i>
-        </div>
-        <div class="absolute w-16 h-16 rounded-full bg-blue-900 text-white flex items-center justify-center hover:bg-blue-800 transition-all duration-300 cursor-pointer" style="bottom: 10%; left: 50%; transform: translateX(-50%);">
-            <i class="fas fa-cog" onclick="toggleMenu('settings')"></i>
-        </div>
-        <div class="absolute w-16 h-16 rounded-full bg-blue-900 text-white flex items-center justify-center hover:bg-blue-800 transition-all duration-300 cursor-pointer" style="top: 30%; left: 10%;">
-            <i class="fas fa-user" onclick="window.location.href='/profile'"></i>
+<body class="bg-gray-50 min-h-screen transition-colors duration-300">
+    <div class="w-full max-w-4xl mx-auto">
+        <!-- Top Navigation Bar -->
+        <div class="bg-white shadow-md p-4 flex items-center justify-between">
+            <h1 class="text-2xl font-bold text-navy-900 flex items-center">
+                <svg class="w-6 h-6 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2v20m-8-4h16"></path>
+                    <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
+                </svg>
+                UChat - <span id="chat-name">General</span>
+            </h1>
+            <div class="flex space-x-4">
+                <button onclick="showTab('channels')" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Channels</button>
+                <button onclick="showTab('dms')" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">DMs</button>
+                <button onclick="showTab('groups')" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Groups</button>
+                <button onclick="showTab('settings')" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Settings</button>
+                <button onclick="window.location.href='/profile'" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800"><i class="fas fa-user"></i></button>
+            </div>
         </div>
 
-        <!-- Radial Menus -->
-        <div id="channels-menu" class="absolute hidden flex flex-col items-center space-y-2" style="top: 20%; left: 50%; transform: translateX(-50%);">
+        <!-- Tab Content -->
+        <div id="channels-tab" class="mt-4 hidden">
             <ul id="channel-list" class="space-y-2"></ul>
         </div>
-        <div id="groups-menu" class="absolute hidden flex flex-col items-center space-y-2" style="top: 40%; right: 15%;">
-            <button onclick="toggleGroupCreation()" class="bg-coral-500 text-white px-4 py-2 rounded-full hover:bg-coral-600">New Group</button>
-            <div id="group-creation" class="hidden space-y-2">
-                <input id="group-name" type="text" placeholder="Group Name" class="p-2 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-900">
-                <select id="group-members" multiple class="p-2 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-900" size="3"></select>
-                <button onclick="createGroup()" class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800">Create</button>
+        <div id="dms-tab" class="mt-4 hidden">
+            <ul id="dm-list" class="space-y-2"></ul>
+        </div>
+        <div id="groups-tab" class="mt-4 hidden">
+            <button onclick="toggleGroupCreation()" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 mb-4">New Group</button>
+            <div id="group-creation" class="hidden space-y-2 mb-4">
+                <input id="group-name" type="text" placeholder="Group Name" class="p-2 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-navy-900">
+                <select id="group-members" multiple class="p-2 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-navy-900" size="3"></select>
+                <button onclick="createGroup()" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Create</button>
             </div>
             <ul id="group-list" class="space-y-2"></ul>
         </div>
-        <div id="dms-menu" class="absolute hidden flex flex-col items-center space-y-2" style="bottom: 40%; right: 15%;">
-            <ul id="dm-list" class="space-y-2"></ul>
-        </div>
-        <div id="settings-menu" class="absolute hidden flex flex-col items-center space-y-2" style="bottom: 20%; left: 50%; transform: translateX(-50%);">
-            <button onclick="showColorPicker()" class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800">Change Color</button>
-            <select id="language-select" onchange="updateLanguage()" class="p-2 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-900">
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="zh">Chinese</option>
-            </select>
-            <button id="theme-toggle" onclick="toggleTheme()" class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800">Toggle Theme</button>
-            <button id="mute-btn" onclick="toggleMute()" class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800">Mute (Off)</button>
-            <button onclick="window.location.href='/logout'" class="bg-coral-500 text-white px-4 py-2 rounded-full hover:bg-coral-600">Logout</button>
+        <div id="settings-tab" class="mt-4 hidden">
+            <div class="space-y-4">
+                <button onclick="showColorPicker()" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Change Color</button>
+                <select id="language-select" onchange="updateLanguage()" class="p-2 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-navy-900">
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="zh">Chinese</option>
+                </select>
+                <button id="theme-toggle" onclick="toggleTheme()" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Toggle Theme</button>
+                <button id="mute-btn" onclick="toggleMute()" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Mute (Off)</button>
+                <button onclick="window.location.href='/logout'" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600">Logout</button>
+            </div>
         </div>
 
-        <!-- Chat Area -->
-        <div class="bg-white w-full max-w-2xl h-[70vh] rounded-xl shadow-2xl flex flex-col">
-            <div class="flex items-center justify-between p-4 border-b">
-                <h2 id="chat-title" class="text-xl font-bold text-blue-900 flex items-center">
-                    <svg class="w-6 h-6 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10z"></path>
-                    </svg>
-                    UChat - <span id="chat-name">General</span>
-                </h2>
-                <div class="flex items-center space-x-2">
-                    <input id="search-input" type="text" placeholder="Search messages..." class="p-2 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-900">
-                    <button onclick="searchMessages()" class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800"><i class="fas fa-search"></i></button>
-                </div>
-            </div>
-            <div id="chat-area" class="flex-1 p-4 overflow-y-auto">
-                <div class="chat-content"></div>
-            </div>
-            <div id="typing-indicator" class="text-gray-500 italic p-2"></div>
-            <div class="p-4 border-t flex items-center space-x-2">
-                <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 p-3 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-900" oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
-                <button onclick="toggleEmojiPicker()" class="bg-blue-900 text-white p-3 rounded-full hover:bg-blue-800"><i class="fas fa-smile"></i></button>
-                <input type="file" id="image-input" accept="image/*" class="hidden" onchange="sendImage()">
-                <button onclick="document.getElementById('image-input').click()" class="bg-blue-900 text-white p-3 rounded-full hover:bg-blue-800"><i class="fas fa-image"></i></button>
-                <button id="record-btn" onclick="startRecording()" class="bg-blue-900 text-white p-3 rounded-full hover:bg-blue-800"><i class="fas fa-microphone"></i></button>
-                <button onclick="sendMessage()" class="bg-blue-900 text-white p-3 rounded-full hover:bg-blue-800"><i class="fas fa-paper-plane"></i></button>
-            </div>
-            <div id="reply-container" class="p-2 bg-gray-100 rounded-lg flex items-center space-x-2 hidden">
-                <p id="reply-preview" class="text-sm text-blue-900 truncate flex-1"></p>
-                <button onclick="cancelReply()" class="bg-coral-500 text-white px-2 py-1 rounded-full hover:bg-coral-600">Cancel</button>
-            </div>
+        <!-- Chat Timeline -->
+        <div id="chat-area" class="mt-4 h-[70vh] overflow-y-auto relative">
+            <div class="timeline-line"></div>
+            <div class="chat-content"></div>
+        </div>
+
+        <!-- Chat History Snapshot -->
+        <div class="mt-2 flex items-center space-x-2">
+            <input type="date" id="snapshot-date" class="p-2 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-navy-900">
+            <button onclick="loadSnapshot()" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Jump to Date</button>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div id="typing-indicator" class="text-gray-500 italic p-2"></div>
+
+        <!-- Input Bar -->
+        <div class="fixed bottom-0 left-0 right-0 max-w-4xl mx-auto bg-white p-4 shadow-md flex items-center space-x-2">
+            <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 p-3 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-navy-900" oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button onclick="toggleEmojiPicker()" class="bg-navy-900 text-white p-3 rounded-lg hover:bg-navy-800"><i class="fas fa-smile"></i></button>
+            <input type="file" id="image-input" accept="image/*" class="hidden" onchange="sendImage()">
+            <button onclick="document.getElementById('image-input').click()" class="bg-navy-900 text-white p-3 rounded-lg hover:bg-navy-800"><i class="fas fa-image"></i></button>
+            <button id="record-btn" onclick="startRecording()" class="bg-navy-900 text-white p-3 rounded-lg hover:bg-navy-800"><i class="fas fa-microphone"></i></button>
+            <button onclick="sendMessage()" class="bg-navy-900 text-white p-3 rounded-lg hover:bg-navy-800"><i class="fas fa-paper-plane"></i></button>
+        </div>
+
+        <!-- Reply Container -->
+        <div id="reply-container" class="fixed bottom-16 left-0 right-0 max-w-4xl mx-auto bg-gray-100 p-2 rounded-lg flex items-center space-x-2 hidden">
+            <p id="reply-preview" class="text-sm text-navy-900 truncate flex-1"></p>
+            <button onclick="cancelReply()" class="bg-teal-500 text-white px-2 py-1 rounded-lg hover:bg-teal-600">Cancel</button>
         </div>
     </div>
 
     <!-- Modals -->
     <div id="color-picker-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
         <div class="bg-white p-6 rounded-lg w-full max-w-sm">
-            <h3 class="text-blue-900">Pick a Color</h3>
+            <h3 class="text-navy-900">Pick a Color</h3>
             <input type="color" id="color-picker" class="w-full h-10 mt-2">
             <div class="flex space-x-2 mt-4">
-                <button onclick="changeColor()" class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800">Apply</button>
-                <button onclick="hideColorPicker()" class="bg-gray-500 text-white px-4 py-2 rounded-full hover:bg-gray-600">Cancel</button>
+                <button onclick="changeColor()" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Apply</button>
+                <button onclick="hideColorPicker()" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600">Cancel</button>
             </div>
         </div>
     </div>
     <div id="call-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
         <div class="bg-white p-4 rounded-lg w-full max-w-sm">
-            <p id="call-status" class="text-blue-900"></p>
+            <p id="call-status" class="text-navy-900"></p>
             <div class="flex space-x-2 mt-4">
-                <button id="accept-call" class="bg-blue-900 text-white px-4 py-2 rounded-full hover:bg-blue-800">Accept</button>
-                <button id="decline-call" class="bg-coral-500 text-white px-4 py-2 rounded-full hover:bg-coral-600">Decline</button>
+                <button id="accept-call" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Accept</button>
+                <button id="decline-call" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600">Decline</button>
             </div>
         </div>
     </div>
     <div id="call-interface" class="fixed bottom-4 right-4 bg-white p-4 rounded-lg hidden shadow-md">
-        <p id="call-with" class="text-blue-900"></p>
-        <button onclick="hangUp()" class="bg-coral-500 text-white px-4 py-2 rounded-full hover:bg-coral-600 mt-2">Hang Up</button>
+        <p id="call-with" class="text-navy-900"></p>
+        <button onclick="hangUp()" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 mt-2">Hang Up</button>
     </div>
     <div id="emoji-picker-container" class="absolute bottom-20 right-4 bg-white border rounded-lg p-2 shadow-md hidden">
         <emoji-picker></emoji-picker>
