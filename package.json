@@ -1,7 +1,7 @@
 {
-  "name": "uchat-next",
+  "name": "uchat",
   "version": "1.0.0",
-  "description": "A futuristic chat app with group chats and persistent history",
+  "description": "A redesigned UChat with all features and enhanced UX",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
