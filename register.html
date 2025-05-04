@@ -5,31 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UChat - Register</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
 </head>
-<body class="bg-gray-900 text-white font-sans antialiased flex items-center justify-center min-h-screen">
-    <div class="w-full max-w-md p-8 bg-gray-800 rounded-lg shadow-lg animate__animated animate__fadeIn">
-        <h2 class="text-3xl font-bold text-indigo-400 text-center mb-6">Join UChat</h2>
-        <div id="error-message" class="hidden text-red-400 text-center mb-4"></div>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-md p-6 bg-white rounded-lg shadow-md">
+        <h2 class="text-2xl font-bold text-gray-800 text-center mb-6">Register for UChat</h2>
+        <div id="error-message" class="hidden text-red-500 text-center mb-4"></div>
         <div class="space-y-4">
             <div>
-                <label for="username" class="block text-sm font-medium text-gray-300">Username</label>
+                <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
                 <div class="relative">
-                    <i class="fas fa-user absolute left-3 top-3 text-gray-400"></i>
-                    <input type="text" id="username" class="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Choose a username">
+                    <i class="fas fa-user absolute left-3 top-3 text-gray-500"></i>
+                    <input type="text" id="username" class="w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Choose username">
                 </div>
             </div>
             <div>
-                <label for="password" class="block text-sm font-medium text-gray-300">Password</label>
+                <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
                 <div class="relative">
-                    <i class="fas fa-lock absolute left-3 top-3 text-gray-400"></i>
-                    <input type="password" id="password" class="w-full pl-10 pr-4 py-2 bg-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Create a password">
+                    <i class="fas fa-lock absolute left-3 top-3 text-gray-500"></i>
+                    <input type="password" id="password" class="w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Create password">
                 </div>
             </div>
-            <button onclick="register()" class="w-full btn-primary"><i class="fas fa-user-plus mr-2"></i>Register</button>
-            <p class="text-center text-gray-400">Already have an account? <a href="/" class="text-indigo-400 hover:underline">Login</a></p>
+            <button onclick="register()" class="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition duration-200">Register</button>
+            <p class="text-center text-gray-600">Already have an account? <a href="/" class="text-green-500 hover:underline">Login</a></p>
         </div>
     </div>
 
@@ -40,7 +39,7 @@
             const errorMessage = document.getElementById('error-message');
 
             if (!username || !password) {
-                errorMessage.textContent = 'Please enter both username and password';
+                errorMessage.textContent = 'Please enter username and password';
                 errorMessage.classList.remove('hidden');
                 return;
             }
@@ -53,7 +52,6 @@
                     credentials: 'include'
                 });
                 const data = await response.json();
-
                 if (data.success) {
                     window.location.href = '/chat';
                 } else {
@@ -61,7 +59,7 @@
                     errorMessage.classList.remove('hidden');
                 }
             } catch (err) {
-                errorMessage.textContent = 'An error occurred. Please try again.';
+                errorMessage.textContent = 'An error occurred';
                 errorMessage.classList.remove('hidden');
             }
         }

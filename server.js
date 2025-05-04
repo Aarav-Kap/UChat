@@ -13,26 +13,26 @@ const path = require('path');
 
 mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
     .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+    .catch(err => console.error('MongoDB error:', err));
 
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    color: { type: String, default: '#1E90FF' },
+    color: { type: String, default: '#4CAF50' },
     language: { type: String, default: 'en' },
     profilePicture: { type: String, default: '' },
 });
 const User = mongoose.model('User', userSchema);
 
 const messageSchema = new mongoose.Schema({
-    type: { type: String, required: true }, // 'text', 'image', 'audio'
+    type: { type: String, required: true },
     content: { type: String, required: true },
     username: { type: String, required: true },
     color: { type: String, required: true },
     language: { type: String, required: true },
     senderId: { type: String, required: true },
-    channel: { type: String }, // null for DMs
-    recipientId: { type: String }, // null for channel messages
+    channel: { type: String },
+    recipientId: { type: String },
     replyTo: { type: String },
     profilePicture: { type: String },
     timestamp: { type: Date, default: Date.now },
@@ -43,7 +43,7 @@ const store = new MongoDBStore({
     uri: 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
     collection: 'sessions',
 });
-store.on('error', err => console.error('Session store error:', err));
+store.on('error', err => console.error('Session error:', err));
 
 const sessionMiddleware = session({
     secret: 'UlisChatSecret2025',
@@ -142,7 +142,7 @@ app.get('/messages', async (req, res) => {
             { senderId: recipientId, recipientId: req.session.userId }
         ]
     } : { channel };
-    const messages = await Message.find(query).sort({ timestamp: 1 }).limit(100);
+    const messages = await Message.find(query).sort({ timestamp: 1 }).limit(150);
     res.json(messages);
 });
 
@@ -151,7 +151,7 @@ app.get('/logout', (req, res) => {
 });
 
 const connectedUsers = new Map();
-const channels = ['Main', 'Math', 'Science', 'History', 'English'];
+const channels = ['General', 'Math', 'Science', 'History', 'English'];
 
 io.on('connection', async (socket) => {
     const session = socket.request.session;
@@ -246,16 +246,6 @@ io.on('connection', async (socket) => {
         }
     });
 
-    socket.on('color change', (data) => {
-        connectedUsers.get(socket.id).color = data.color;
-        io.emit('color change', data);
-    });
-
-    socket.on('profile picture change', (data) => {
-        connectedUsers.get(socket.id).profilePicture = data.profilePicture;
-        io.emit('profile picture change', data);
-    });
-
     socket.on('typing', (data) => socket.to(data.channel).emit('typing', data));
     socket.on('stop typing', (data) => socket.to(data.channel).emit('stop typing', data));
 
@@ -263,14 +253,14 @@ io.on('connection', async (socket) => {
         const sender = connectedUsers.get(socket.id);
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
         if (recipient) {
-            io.to(recipient.id).emit('call-made', { 
-                offer: data.offer, 
-                from: sender.userId, 
+            io.to(recipient.id).emit('call-made', {
+                offer: data.offer,
+                from: sender.userId,
                 fromUsername: sender.username,
                 fromSocketId: socket.id
             });
         } else {
-            socket.emit('call-rejected');
+            socket.emit('call-rejected', { to: data.to });
         }
     });
 

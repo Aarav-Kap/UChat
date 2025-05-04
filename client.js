@@ -1,10 +1,8 @@
 const socket = io('https://uchat-997p.onrender.com', {
     withCredentials: true,
     transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 5,
 });
-let username, userColor, userLanguage, userId, profilePicture, activeTab = 'Main', dmTabs = {};
+let username, userColor, userLanguage, userId, profilePicture, activeTab = 'General', dmTabs = {};
 let isMuted = false;
 let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
 let replyingTo = null;
@@ -36,7 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     userLanguage = data.language;
     userId = data.userId;
     profilePicture = data.profilePicture;
-    document.getElementById('current-username').textContent = `Welcome, ${username}`;
+    document.getElementById('current-username').textContent = `Hello, ${username}`;
     document.getElementById('language-select').value = userLanguage;
 
     const picker = document.querySelector('emoji-picker');
@@ -60,11 +58,13 @@ socket.on('channels', channels => {
     const channelList = document.getElementById('channel-list');
     channelList.innerHTML = channels.map(channel => `
         <li>
-            <button class="channel-button ${channel === activeTab ? 'active' : ''}" data-channel="${channel}" onclick="switchChannel('${channel}')">
+            <button class="w-full text-left px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition duration-200 ${channel === activeTab ? 'bg-green-500' : ''}" data-channel="${channel}" onclick="switchChannel('${channel}')">
                 # ${channel}
             </button>
         </li>
     `).join('');
+    const tabs = document.getElementById('tabs');
+    tabs.innerHTML = `<button class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg mr-2 active-tab" data-tab="General" onclick="switchTab('General')"># General</button>`;
 });
 
 socket.on('user list', users => {
@@ -75,7 +75,7 @@ socket.on('user list', users => {
             <li class="flex items-center space-x-2">
                 <img src="${u.profilePicture || 'https://via.placeholder.com/32'}" alt="${u.username}" class="w-8 h-8 rounded-full">
                 <span class="flex-1 cursor-pointer" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</span>
-                <button onclick="callUser('${u.userId}')" class="btn-icon"><i class="fas fa-phone"></i></button>
+                <button onclick="callUser('${u.userId}')" class="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600"><i class="fas fa-phone"></i></button>
             </li>
         `)
         .join('');
@@ -84,7 +84,7 @@ socket.on('user list', users => {
 
 socket.on('chat message', msg => {
     if (msg.channel === activeTab) {
-        handleMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
+        appendMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
         playNotification();
     }
 });
@@ -96,7 +96,7 @@ socket.on('dm message', msg => {
         createDMTab(partnerId, partnerUsername);
     }
     if (activeTab === `dm-${partnerId}`) {
-        handleMessage(msg, dmTabs[partnerId].chat, true);
+        appendMessage(msg, dmTabs[partnerId].chat, true);
         playNotification();
     }
 });
@@ -105,7 +105,7 @@ socket.on('image message', msg => {
     const partnerId = msg.recipientId ? (msg.senderId === userId ? msg.recipientId : msg.senderId) : null;
     const chat = partnerId ? dmTabs[partnerId]?.chat : document.getElementById('chat-area').querySelector('.chat-content');
     if (chat && (!msg.channel || msg.channel === activeTab)) {
-        handleImageMessage(msg, chat, !!partnerId);
+        appendImageMessage(msg, chat, !!partnerId);
         playNotification();
     }
 });
@@ -114,7 +114,7 @@ socket.on('audio message', msg => {
     const partnerId = msg.recipientId ? (msg.senderId === userId ? msg.recipientId : msg.senderId) : null;
     const chat = partnerId ? dmTabs[partnerId]?.chat : document.getElementById('chat-area').querySelector('.chat-content');
     if (chat && (!msg.channel || msg.channel === activeTab)) {
-        handleAudioMessage(msg, chat, !!partnerId);
+        appendAudioMessage(msg, chat, !!partnerId);
         playNotification();
     }
 });
@@ -125,16 +125,6 @@ socket.on('typing', data => {
 
 socket.on('stop typing', data => {
     if (data.channel === activeTab) document.getElementById('typing-indicator').textContent = '';
-});
-
-socket.on('color change', data => {
-    document.querySelectorAll('.message').forEach(msg => {
-        if (msg.dataset.senderId === data.id) msg.style.setProperty('--username-color', data.color);
-    });
-});
-
-socket.on('profile picture change', data => {
-    if (data.id === userId) profilePicture = data.profilePicture;
 });
 
 socket.on('call-made', async data => {
@@ -270,14 +260,14 @@ async function loadMessages(channelOrRecipientId) {
     const response = await fetch(`/messages?${params}`, { credentials: 'include' });
     const messages = await response.json();
     messages.forEach(msg => {
-        if (msg.type === 'text') handleMessage(msg, chatArea, !!msg.recipientId);
-        else if (msg.type === 'image') handleImageMessage(msg, chatArea, !!msg.recipientId);
-        else if (msg.type === 'audio') handleAudioMessage(msg, chatArea, !!msg.recipientId);
+        if (msg.type === 'text') appendMessage(msg, chatArea, !!msg.recipientId);
+        else if (msg.type === 'image') appendImageMessage(msg, chatArea, !!msg.recipientId);
+        else if (msg.type === 'audio') appendAudioMessage(msg, chatArea, !!msg.recipientId);
     });
     chatArea.scrollTop = chatArea.scrollHeight;
 }
 
-function handleMessage(msg, chat, isDM) {
+function appendMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.senderId = msg.senderId;
@@ -314,7 +304,7 @@ function handleMessage(msg, chat, isDM) {
     chat.scrollTop = chat.scrollHeight;
 }
 
-function handleImageMessage(msg, chat, isDM) {
+function appendImageMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.senderId = msg.senderId;
@@ -339,7 +329,7 @@ function handleImageMessage(msg, chat, isDM) {
     chat.scrollTop = chat.scrollHeight;
 }
 
-function handleAudioMessage(msg, chat, isDM) {
+function appendAudioMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.senderId = msg.senderId;
@@ -387,7 +377,7 @@ function startDM(recipientId, recipientUsername) {
 function createDMTab(recipientId, recipientUsername) {
     const tabs = document.getElementById('tabs');
     const tabBtn = document.createElement('button');
-    tabBtn.className = 'tab-button';
+    tabBtn.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-lg mr-2';
     tabBtn.setAttribute('data-tab', `dm-${recipientId}`);
     tabBtn.textContent = `DM: ${recipientUsername}`;
     tabBtn.onclick = () => switchTab(`dm-${recipientId}`);
@@ -395,8 +385,8 @@ function createDMTab(recipientId, recipientUsername) {
 
     const dmTab = document.createElement('div');
     dmTab.id = `dm-${recipientId}`;
-    dmTab.className = 'chat-area flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto hidden';
-    dmTab.innerHTML = `<div class="chat-content flex flex-col space-y-2"></div>`;
+    dmTab.className = 'chat-area flex-1 bg-white rounded-lg p-4 overflow-y-auto hidden shadow-md';
+    dmTab.innerHTML = `<div class="chat-content flex flex-col gap-4"></div>`;
     document.getElementById('dm-tabs').appendChild(dmTab);
 
     dmTabs[recipientId] = { chat: dmTab.querySelector('.chat-content'), button: tabBtn };
@@ -404,24 +394,24 @@ function createDMTab(recipientId, recipientUsername) {
 }
 
 function switchTab(tabId) {
-    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('#tabs button').forEach(btn => btn.classList.remove('active-tab'));
     document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
-    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-    document.getElementById(tabId === 'Main' ? 'chat-area' : tabId).classList.add('active');
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active-tab');
+    document.getElementById(tabId === 'General' ? 'chat-area' : tabId).classList.add('active');
     activeTab = tabId;
     const input = document.getElementById('message-input');
     input.dataset.recipient = tabId.startsWith('dm-') ? tabId.replace('dm-', '') : '';
     input.placeholder = tabId.startsWith('dm-') ? `DM to ${getRecipientUsername(input.dataset.recipient)}...` : `Message #${activeTab}...`;
     if (!tabId.startsWith('dm-')) {
-        document.querySelectorAll('.channel-button').forEach(btn => btn.classList.remove('active'));
-        document.querySelector(`[data-channel="${tabId}"]`).classList.add('active');
+        document.querySelectorAll('#channel-list button').forEach(btn => btn.classList.remove('bg-green-500'));
+        document.querySelector(`[data-channel="${tabId}"]`).classList.add('bg-green-500');
         loadMessages(tabId);
     }
 }
 
 function switchChannel(channel) {
-    document.querySelectorAll('.channel-button').forEach(btn => btn.classList.remove('active'));
-    document.querySelector(`[data-channel="${channel}"]`).classList.add('active');
+    document.querySelectorAll('#channel-list button').forEach(btn => btn.classList.remove('bg-green-500'));
+    document.querySelector(`[data-channel="${channel}"]`).classList.add('bg-green-500');
     activeTab = channel;
     document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
     document.getElementById('chat-area').classList.add('active');
@@ -429,6 +419,20 @@ function switchChannel(channel) {
     document.getElementById('message-input').placeholder = `Message #${channel}...`;
     socket.emit('join channel', channel);
     loadMessages(channel);
+    document.querySelectorAll('#tabs button').forEach(btn => btn.classList.remove('active-tab'));
+    const existingTab = document.querySelector(`[data-tab="${channel}"]`);
+    if (existingTab) {
+        existingTab.classList.add('active-tab');
+    } else {
+        const tabs = document.getElementById('tabs');
+        const tabBtn = document.createElement('button');
+        tabBtn.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-lg mr-2 active-tab';
+        tabBtn.setAttribute('data-tab', channel);
+        tabBtn.textContent = `# ${channel}`;
+        tabBtn.onclick = () => switchTab(channel);
+        tabs.innerHTML = '';
+        tabs.appendChild(tabBtn);
+    }
 }
 
 function sendMessage() {
@@ -565,7 +569,6 @@ function changeColor() {
     }).then(res => res.json()).then(data => {
         if (data.success) {
             userColor = newColor;
-            socket.emit('color change', { id: userId, color: newColor });
             hideColorPicker();
         }
     });
@@ -588,7 +591,7 @@ function getRecipientUsername(id) {
 
 function toggleMute() {
     isMuted = !isMuted;
-    document.getElementById('mute-btn').innerHTML = `<i class="fas fa-volume-${isMuted ? 'mute' : 'up'} mr-2"></i>Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
+    document.getElementById('mute-btn').textContent = `Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
 }
 
 function playNotification() {

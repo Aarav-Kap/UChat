@@ -1,7 +1,7 @@
 {
   "name": "uchat",
   "version": "1.0.0",
-  "description": "A redesigned chat app with persistent messages and profiles",
+  "description": "A recoded chat app with reliable functionality",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
