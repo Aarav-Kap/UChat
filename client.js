@@ -8,12 +8,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!response.ok) return window.location.href = '/';
     const data = await response.json();
     username = data.username; userColor = data.color; userLanguage = data.language; userId = data.userId; profilePicture = data.profilePicture;
+    document.getElementById('chat-title').textContent = `#${activeTab}`;
     loadInitialContent();
     socket.emit('join channel', activeTab);
 });
 
 function loadInitialContent() {
     fetchMessages(activeTab);
+    socket.emit('get user list');
 }
 
 socket.on('channels', channels => {
@@ -34,11 +36,26 @@ socket.on('user list', users => {
     const dmList = document.getElementById('dm-list');
     dmList.innerHTML = users.filter(u => u.userId !== userId).map(u => `
         <li class="flex items-center space-x-2">
-            <button class="flex-1 bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600 text-left" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</button>
+            <button class="flex-1 bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600 text-left" onclick="startDM('${u.userId}', '${u.username}')">${u.username} ${users.some(online => online.userId === u.userId) ? '(Online)' : ''}</button>
             <button onclick="callUser('${u.userId}')" class="bg-red-600 text-white p-2 rounded-md hover:bg-red-500"><i class="fas fa-phone"></i></button>
         </li>
     `).join('');
     document.getElementById('group-members').innerHTML = users.filter(u => u.userId !== userId).map(u => `<option value="${u.userId}">${u.username}</option>`).join('');
+});
+
+socket.on('channel joined', (channel) => {
+    console.log(`Joined channel: ${channel}`);
+    fetchMessages(channel);
+});
+
+socket.on('group joined', (groupId) => {
+    console.log(`Joined group: ${groupId}`);
+    fetchMessages(`group-${groupId}`);
+});
+
+socket.on('dm joined', (recipientId) => {
+    console.log(`Joined DM with: ${recipientId}`);
+    fetchMessages(`dm-${recipientId}`);
 });
 
 socket.on('chat message', msg => {
@@ -52,32 +69,32 @@ socket.on('group message', msg => {
 });
 
 socket.on('dm message', msg => {
-    const partnerId = msg.senderId === userId ? msg.recipientId : msg.senderId;
+    const partnerId = msg.senderId.toString() === userId ? msg.recipientId.toString() : msg.senderId.toString();
     if (!dmTabs[partnerId]) startDM(partnerId, msg.username === username ? getUsernameFromId(partnerId) : msg.username);
     if (activeTab === `dm-${partnerId}`) appendMessage(msg, document.getElementById('messages'));
     playNotification();
 });
 
 socket.on('image message', msg => {
-    const target = msg.recipientId ? `dm-${msg.senderId === userId ? msg.recipientId : msg.senderId}` : msg.groupId ? msg.groupId.toString() : msg.channel;
+    const target = msg.recipientId ? `dm-${msg.senderId.toString() === userId ? msg.recipientId.toString() : msg.senderId.toString()}` : msg.groupId ? msg.groupId.toString() : msg.channel;
     if (activeTab === target) appendImageMessage(msg, document.getElementById('messages'));
     playNotification();
 });
 
 socket.on('audio message', msg => {
-    const target = msg.recipientId ? `dm-${msg.senderId === userId ? msg.recipientId : msg.senderId}` : msg.groupId ? msg.groupId.toString() : msg.channel;
+    const target = msg.recipientId ? `dm-${msg.senderId.toString() === userId ? msg.recipientId.toString() : msg.senderId.toString()}` : msg.groupId ? msg.groupId.toString() : msg.channel;
     if (activeTab === target) appendAudioMessage(msg, document.getElementById('messages'));
     playNotification();
 });
 
 socket.on('typing', data => {
-    if (activeTab === data.channel || activeTab === data.groupId || (data.recipientId && activeTab === `dm-${data.recipientId}`)) {
+    if (activeTab === data.channel || (activeTab === `group-${data.groupId}`) || (data.recipientId && activeTab === `dm-${data.recipientId}`)) {
         document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
     }
 });
 
 socket.on('stop typing', data => {
-    if (activeTab === data.channel || activeTab === data.groupId || (data.recipientId && activeTab === `dm-${data.recipientId}`)) {
+    if (activeTab === data.channel || (activeTab === `group-${data.groupId}`) || (data.recipientId && activeTab === `dm-${data.recipientId}`)) {
         document.getElementById('typing-indicator').textContent = '';
     }
 });
@@ -114,14 +131,14 @@ socket.on('group-call-made', async data => {
 });
 
 socket.on('group-answer-made', async data => {
-    const peer = groupCall.peers[data.to];
+    const peer = groupCall.peers[data.from];
     if (peer) await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
     document.getElementById('call-interface').style.display = 'block';
     document.getElementById('call-with').textContent = `In group call for group ${groupCall.groupId}`;
 });
 
-socket.on('group ice-candidate', async data => {
-    const peer = groupCall.peers[data.to];
+socket.on('group-ice-candidate', async data => {
+    const peer = groupCall.peers[data.from];
     if (peer && data.candidate) await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
 });
 
@@ -161,7 +178,7 @@ async function setupPeerConnection(recipientId) {
 
 async function startGroupCall() {
     if (isCalling || groupCall) { alert('Already in a call.'); return; }
-    const groupId = activeTab;
+    const groupId = activeTab.replace('group-', '');
     const members = Array.from(document.querySelectorAll('#group-members option')).map(opt => opt.value);
     if (!members.length) return alert('No members to call.');
     groupCall = { groupId, peers: {} };
@@ -172,7 +189,7 @@ async function startGroupCall() {
         const peer = new RTCPeerConnection(configuration);
         localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
         peer.ontrack = event => remoteStream.addTrack(event.track);
-        peer.onicecandidate = event => event.candidate && socket.emit('group ice-candidate', { candidate: event.candidate, to: memberId, groupId });
+        peer.onicecandidate = event => event.candidate && socket.emit('group-ice-candidate', { candidate: event.candidate, to: memberId, groupId });
         peer.oniceconnectionstatechange = () => { if (peer.iceConnectionState === 'disconnected') endGroupCall(); };
         groupCall.peers[memberId] = peer;
         const offer = await peer.createOffer();
@@ -192,7 +209,7 @@ async function acceptGroupCall(data) {
     remoteStream = new MediaStream();
     document.getElementById('remote-audio').srcObject = remoteStream;
     peer.ontrack = event => remoteStream.addTrack(event.track);
-    peer.onicecandidate = event => event.candidate && socket.emit('group ice-candidate', { candidate: event.candidate, to: data.from, groupId: data.groupId });
+    peer.onicecandidate = event => event.candidate && socket.emit('group-ice-candidate', { candidate: event.candidate, to: data.from, groupId: data.groupId });
     peer.oniceconnectionstatechange = () => { if (peer.iceConnectionState === 'disconnected') endGroupCall(); };
     groupCall.peers[data.from] = peer;
     await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -248,7 +265,7 @@ async function fetchMessages(tab) {
 
 function appendMessage(msg, container) {
     const div = document.createElement('div');
-    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
+    div.className = `message ${msg.senderId.toString() === userId ? 'sent' : 'received'}`;
     div.dataset.messageId = msg._id;
     let content = `
         <div class="flex items-center space-x-2">
@@ -277,7 +294,7 @@ function appendMessage(msg, container) {
 
 function appendImageMessage(msg, container) {
     const div = document.createElement('div');
-    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
+    div.className = `message ${msg.senderId.toString() === userId ? 'sent' : 'received'}`;
     div.dataset.messageId = msg._id;
     let content = `
         <div class="flex items-center space-x-2">
@@ -305,7 +322,7 @@ function appendImageMessage(msg, container) {
 
 function appendAudioMessage(msg, container) {
     const div = document.createElement('div');
-    div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
+    div.className = `message ${msg.senderId.toString() === userId ? 'sent' : 'received'}`;
     div.dataset.messageId = msg._id;
     let content = `
         <div class="flex items-center space-x-2">
@@ -364,33 +381,33 @@ function toggleGroupCreation() {
     document.getElementById('group-creation').classList.toggle('hidden');
 }
 
-function createGroup() {
+async function createGroup() {
     const name = document.getElementById('group-name').value.trim();
     const memberIds = Array.from(document.getElementById('group-members').selectedOptions).map(opt => opt.value);
     if (!name || memberIds.length === 0) return alert('Please enter a group name and select members.');
-    fetch('/create-group', {
+    const response = await fetch('/create-group', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, memberIds }),
         credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            socket.emit('join group', data.groupId);
-            document.getElementById('group-name').value = '';
-            document.getElementById('group-members').selectedIndex = -1;
-            toggleGroupCreation();
-        }
     });
+    const data = await response.json();
+    if (data.success) {
+        socket.emit('join group', data.groupId);
+        document.getElementById('group-name').value = '';
+        document.getElementById('group-members').selectedIndex = -1;
+        toggleGroupCreation();
+    }
 }
 
 function switchTab(tabId, type = 'channel') {
     activeTab = type === 'channel' ? tabId : type === 'group' ? `group-${tabId}` : `dm-${tabId}`;
     document.getElementById('chat-title').textContent = type === 'channel' ? `#${tabId}` : type === 'group' ? (groupTabs[tabId]?.title || 'Group') : dmTabs[tabId]?.title || 'DM';
     document.getElementById('group-call-btn').style.display = type === 'group' ? 'block' : 'none';
-    fetchMessages(activeTab);
     if (type === 'channel') socket.emit('join channel', tabId);
     else if (type === 'group') socket.emit('join group', tabId);
     else if (type === 'dm') socket.emit('join dm', tabId);
+    fetchMessages(activeTab);
 }
 
 function sendMessage() {
@@ -490,5 +507,5 @@ function toggleEmojiPicker() {
 }
 
 function getUsernameFromId(id) {
-    return Array.from(document.querySelectorAll('#dm-list button')).find(btn => btn.onclick.toString().includes(id))?.textContent || 'Unknown';
+    return Array.from(document.querySelectorAll('#dm-list button')).find(btn => btn.onclick.toString().includes(id))?.textContent.split(' ')[0] || 'Unknown';
 }

@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
+mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/schoolchat?retryWrites=true&w=majority&appName=Cluster0')
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB error:', err));
 
@@ -32,18 +32,18 @@ const messageSchema = new mongoose.Schema({
     type: { type: String, required: true },
     content: { type: String, required: true },
     username: { type: String, required: true },
-    senderId: { type: String, required: true },
+    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     channel: { type: String },
     groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group' },
-    recipientId: { type: String },
-    replyTo: { type: String },
+    recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message' },
     profilePicture: { type: String },
     timestamp: { type: Date, default: Date.now },
 });
 const Message = mongoose.model('Message', messageSchema);
 
 const store = new MongoDBStore({
-    uri: 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+    uri: 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/schoolchat?retryWrites=true&w=majority&appName=Cluster0',
     collection: 'sessions',
 });
 store.on('error', err => console.error('Session error:', err));
@@ -117,17 +117,17 @@ app.post('/update-profile', async (req, res) => {
 
 app.post('/create-group', async (req, res) => {
     const { name, memberIds } = req.body;
-    const group = new Group({ name, members: [req.session.userId, ...memberIds] });
+    const group = new Group({ name, members: [req.session.userId, ...memberIds.map(id => mongoose.Types.ObjectId(id))] });
     await group.save();
-    res.json({ success: true, groupId: group._id });
+    res.json({ success: true, groupId: group._id.toString() });
 });
 
 app.get('/messages', async (req, res) => {
     const { channel, groupId, recipientId } = req.query;
-    const query = channel ? { channel } : groupId ? { groupId } : recipientId ? {
-        $or: [{ senderId: req.session.userId, recipientId }, { senderId: recipientId, recipientId: req.session.userId }]
+    const query = channel ? { channel } : groupId ? { groupId: mongoose.Types.ObjectId(groupId) } : recipientId ? {
+        $or: [{ senderId: req.session.userId, recipientId: mongoose.Types.ObjectId(recipientId) }, { senderId: mongoose.Types.ObjectId(recipientId), recipientId: req.session.userId }]
     } : {};
-    const messages = await Message.find(query).sort({ timestamp: 1 }).limit(200);
+    const messages = await Message.find(query).sort({ timestamp: 1 }).limit(200).populate('replyTo');
     res.json(messages);
 });
 
@@ -144,45 +144,82 @@ io.on('connection', async (socket) => {
 
     const user = await User.findById(session.userId);
     connectedUsers.set(socket.id, { id: socket.id, userId: user._id.toString(), username: user.username, profilePicture: user.profilePicture });
-    io.emit('user list', Array.from(connectedUsers.values()));
+    io.emit('user list', Array.from(connectedUsers.values()).map(u => ({ userId: u.userId, username: u.username, profilePicture: u.profilePicture })));
     io.emit('channels', channels);
     const groups = await Group.find({ members: user._id });
-    socket.emit('groups', groups);
+    socket.emit('groups', groups.map(g => ({ _id: g._id.toString(), name: g.name })));
 
     socket.on('join channel', (channel) => {
         socket.join(channel);
+        socket.emit('channel joined', channel);
     });
 
     socket.on('join group', (groupId) => {
-        socket.join(groupId.toString());
+        socket.join(groupId);
+        socket.emit('group joined', groupId);
     });
 
     socket.on('join dm', (recipientId) => {
         const room = [session.userId, recipientId].sort().join('-');
         socket.join(room);
+        socket.emit('dm joined', recipientId);
     });
 
     socket.on('chat message', async (msg) => {
-        const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, channel: msg.channel, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+        const message = new Message({
+            type: 'text',
+            content: msg.text,
+            username: msg.username,
+            senderId: mongoose.Types.ObjectId(msg.senderId),
+            channel: msg.channel,
+            profilePicture: msg.profilePicture,
+            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
+        });
         await message.save();
         io.to(msg.channel).emit('chat message', message);
     });
 
     socket.on('group message', async (msg) => {
-        const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, groupId: msg.groupId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+        const message = new Message({
+            type: 'text',
+            content: msg.text,
+            username: msg.username,
+            senderId: mongoose.Types.ObjectId(msg.senderId),
+            groupId: mongoose.Types.ObjectId(msg.groupId),
+            profilePicture: msg.profilePicture,
+            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
+        });
         await message.save();
         io.to(msg.groupId.toString()).emit('group message', message);
     });
 
     socket.on('dm message', async (msg) => {
-        const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+        const message = new Message({
+            type: 'text',
+            content: msg.text,
+            username: msg.username,
+            senderId: mongoose.Types.ObjectId(msg.senderId),
+            recipientId: mongoose.Types.ObjectId(msg.recipientId),
+            profilePicture: msg.profilePicture,
+            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
+        });
         await message.save();
         const room = [msg.senderId, msg.recipientId].sort().join('-');
         io.to(room).emit('dm message', message);
     });
 
     socket.on('image message', async (msg) => {
-        const message = new Message({ type: 'image', content: msg.image, username: msg.username, senderId: msg.senderId, channel: msg.channel, groupId: msg.groupId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+        const message = new Message({
+            type: 'image',
+            content: msg.image,
+            username: msg.username,
+            senderId: mongoose.Types.ObjectId(msg.senderId),
+            channel: msg.channel,
+            groupId: msg.groupId ? mongoose.Types.ObjectId(msg.groupId) : null,
+            recipientId: msg.recipientId ? mongoose.Types.ObjectId(msg.recipientId) : null,
+            profilePicture: msg.profilePicture,
+            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
+        });
         await message.save();
         if (msg.recipientId) {
             const room = [msg.senderId, msg.recipientId].sort().join('-');
@@ -192,7 +229,17 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('audio message', async (msg) => {
-        const message = new Message({ type: 'audio', content: msg.audio, username: msg.username, senderId: msg.senderId, channel: msg.channel, groupId: msg.groupId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+        const message = new Message({
+            type: 'audio',
+            content: msg.audio,
+            username: msg.username,
+            senderId: mongoose.Types.ObjectId(msg.senderId),
+            channel: msg.channel,
+            groupId: msg.groupId ? mongoose.Types.ObjectId(msg.groupId) : null,
+            recipientId: msg.recipientId ? mongoose.Types.ObjectId(msg.recipientId) : null,
+            profilePicture: msg.profilePicture,
+            replyTo: msg.replyTo ? mongoose.Types.ObjectId(msg.replyTo) : null,
+        });
         await message.save();
         if (msg.recipientId) {
             const room = [msg.senderId, msg.recipientId].sort().join('-');
@@ -203,7 +250,7 @@ io.on('connection', async (socket) => {
 
     socket.on('typing', (data) => {
         if (data.channel) socket.to(data.channel).emit('typing', data);
-        else if (data.groupId) socket.to(data.groupId.toString()).emit('typing', data);
+        else if (data.groupId) socket.to(data.groupId).emit('typing', data);
         else if (data.recipientId) {
             const room = [data.senderId, data.recipientId].sort().join('-');
             socket.to(room).emit('typing', data);
@@ -212,7 +259,7 @@ io.on('connection', async (socket) => {
 
     socket.on('stop typing', (data) => {
         if (data.channel) socket.to(data.channel).emit('stop typing', data);
-        else if (data.groupId) socket.to(data.groupId.toString()).emit('stop typing', data);
+        else if (data.groupId) socket.to(data.groupId).emit('stop typing', data);
         else if (data.recipientId) {
             const room = [data.senderId, data.recipientId].sort().join('-');
             socket.to(room).emit('stop typing', data);
@@ -226,12 +273,12 @@ io.on('connection', async (socket) => {
 
     socket.on('make-answer', (data) => {
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('answer-made', { answer: data.answer });
+        if (recipient) io.to(recipient.id).emit('answer-made', { answer: data.answer, from: data.from });
     });
 
     socket.on('ice-candidate', (data) => {
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('ice-candidate', { candidate: data.candidate });
+        if (recipient) io.to(recipient.id).emit('ice-candidate', { candidate: data.candidate, to: data.to });
     });
 
     socket.on('call-rejected', (data) => {
@@ -255,12 +302,12 @@ io.on('connection', async (socket) => {
 
     socket.on('group-answer', (data) => {
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('group-answer-made', { answer: data.answer, groupId: data.groupId });
+        if (recipient) io.to(recipient.id).emit('group-answer-made', { answer: data.answer, from: data.from, groupId: data.groupId });
     });
 
     socket.on('group-ice-candidate', (data) => {
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('group-ice-candidate', { candidate: data.candidate, groupId: data.groupId });
+        if (recipient) io.to(recipient.id).emit('group-ice-candidate', { candidate: data.candidate, to: data.to, groupId: data.groupId });
     });
 
     socket.on('group-call-rejected', (data) => {
@@ -275,7 +322,7 @@ io.on('connection', async (socket) => {
 
     socket.on('disconnect', () => {
         connectedUsers.delete(socket.id);
-        io.emit('user list', Array.from(connectedUsers.values()));
+        io.emit('user list', Array.from(connectedUsers.values()).map(u => ({ userId: u.userId, username: u.username, profilePicture: u.profilePicture })));
     });
 });
 
