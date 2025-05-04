@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UChat - Profile</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-gray-900 text-white font-sans antialiased flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-md p-8 bg-gray-800 rounded-lg shadow-lg animate__animated animate__fadeIn">
+        <h2 class="text-3xl font-bold text-indigo-400 text-center mb-6">Your Profile</h2>
+        <div class="flex flex-col items-center space-y-4">
+            <img id="profile-picture" src="" alt="Profile Picture" class="w-24 h-24 rounded-full border-2 border-indigo-500">
+            <h3 id="profile-username" class="text-xl font-semibold"></h3>
+            <input type="file" id="profile-picture-input" accept="image/*" class="hidden">
+            <button onclick="document.getElementById('profile-picture-input').click()" class="btn-primary"><i class="fas fa-camera mr-2"></i>Change Picture</button>
+            <button onclick="window.location.href='/chat'" class="btn-secondary"><i class="fas fa-arrow-left mr-2"></i>Back to Chat</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const response = await fetch('/user', { credentials: 'include' });
+            if (!response.ok) return window.location.href = '/';
+            const data = await response.json();
+            document.getElementById('profile-username').textContent = data.username;
+            document.getElementById('profile-picture').src = data.profilePicture || 'https://via.placeholder.com/150';
+        });
+
+        document.getElementById('profile-picture-input').addEventListener('change', async () => {
+            const file = document.getElementById('profile-picture-input').files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const profilePicture = reader.result;
+                document.getElementById('profile-picture').src = profilePicture;
+                await fetch('/update-profile-picture', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profilePicture }),
+                    credentials: 'include'
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+    </script>
+</body>
+</html>

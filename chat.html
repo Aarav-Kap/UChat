@@ -6,106 +6,89 @@
     <title>UChat</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.13.2/index.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/emoji-picker-element@^1.0.0" type="module"></script>
+    <script src="/app.js" defer></script>
 </head>
-<body class="bg-gray-900 text-white flex min-h-screen">
-    <!-- Sidebar -->
-    <div class="w-64 bg-gray-800 p-4 flex flex-col">
-        <h1 class="text-2xl font-bold mb-4">UChat</h1>
-        <div class="flex-1">
-            <h3 class="text-lg font-semibold">Channels</h3>
-            <ul id="channelList" class="space-y-2">
-                <li><button class="channel-btn w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600" data-channel="Main">Main</button></li>
-                <li><button class="channel-btn w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600" data-channel="Math">Math</button></li>
-                <li><button class="channel-btn w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600" data-channel="Science">Science</button></li>
-                <li><button class="channel-btn w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600" data-channel="History">History</button></li>
-                <li><button class="channel-btn w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600" data-channel="English">English</button></li>
-            </ul>
-            <h3 class="text-lg font-semibold mt-4">Direct Messages</h3>
-            <ul id="dmList" class="space-y-2"></ul>
+<body class="bg-gray-900 text-white font-sans antialiased">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div id="sidebar" class="w-64 bg-gray-800 p-4 flex flex-col space-y-4 md:block hidden animate__animated animate__fadeInLeft">
+            <h2 id="current-username" class="text-xl font-bold text-indigo-400"></h2>
+            <button onclick="window.location.href='/profile'" class="btn-primary"><i class="fas fa-user mr-2"></i>Profile</button>
+            <button onclick="showColorPicker()" class="btn-primary"><i class="fas fa-palette mr-2"></i>Change Color</button>
+            <button id="mute-btn" onclick="toggleMute()" class="btn-primary"><i class="fas fa-volume-up mr-2"></i>Toggle Mute (Unmuted)</button>
+            <button onclick="window.location.href='/logout'" class="btn-primary"><i class="fas fa-sign-out-alt mr-2"></i>Logout</button>
+            <select id="language-select" onchange="updateLanguage()" class="bg-gray-700 text-white p-2 rounded">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="zh">Chinese</option>
+            </select>
+            <h3 class="text-indigo-400">Channels</h3>
+            <ul id="channel-list" class="space-y-2"></ul>
+            <h3 class="text-indigo-400">Users Online: <span id="user-count">0</span></h3>
+            <ul id="user-list" class="space-y-2"></ul>
         </div>
-        <div>
-            <button id="profileBtn" class="w-full p-2 bg-gray-700 rounded hover:bg-gray-600"><i class="fas fa-user"></i> Profile</button>
-            <button id="logoutBtn" class="w-full p-2 bg-red-600 rounded hover:bg-red-700 mt-2"><i class="fas fa-sign-out-alt"></i> Logout</button>
-        </div>
-    </div>
-    <!-- Chat Area -->
-    <div class="flex-1 flex flex-col">
-        <div class="p-4 bg-gray-800 flex justify-between items-center">
-            <h2 id="currentChannel" class="text-xl font-semibold">Main</h2>
-            <div>
-                <button id="callBtn" class="p-2 bg-blue-600 rounded hover:bg-blue-700" disabled><i class="fas fa-phone"></i> Call</button>
+
+        <!-- Mobile Menu Button -->
+        <button id="mobile-menu-btn" class="md:hidden fixed top-4 left-4 z-50 text-indigo-400 text-2xl"><i class="fas fa-bars"></i></button>
+
+        <!-- Chat Container -->
+        <div id="chat-container" class="flex-1 flex flex-col p-4">
+            <div id="tabs" class="flex space-x-2 mb-4 overflow-x-auto"></div>
+            <div id="chat-area" class="chat-area active flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto">
+                <div class="chat-content"></div>
             </div>
-        </div>
-        <div id="messages" class="flex-1 p-4 overflow-y-auto"></div>
-        <div id="typingIndicator" class="p-2 text-gray-400"></div>
-        <div class="p-4 bg-gray-800">
-            <div id="replyPreview" class="hidden p-2 bg-gray-700 rounded mb-2"></div>
-            <div class="flex space-x-2">
-                <input type="text" id="messageInput" class="flex-1 p-2 bg-gray-700 rounded focus:outline-none" placeholder="Type a message...">
-                <button id="emojiBtn" class="p-2 bg-gray-600 rounded hover:bg-gray-500"><i class="fas fa-smile"></i></button>
-                <button id="imageBtn" class="p-2 bg-gray-600 rounded hover:bg-gray-500"><i class="fas fa-image"></i></button>
-                <button id="voiceBtn" class="p-2 bg-gray-600 rounded hover:bg-gray-500"><i class="fas fa-microphone"></i></button>
-                <button id="sendBtn" class="p-2 bg-blue-600 rounded hover:bg-blue-700"><i class="fas fa-paper-plane"></i></button>
+            <div id="dm-tabs" class="hidden"></div>
+            <div id="typing-indicator" class="text-gray-400 italic mt-2"></div>
+            <div class="mt-4 flex items-center space-x-2">
+                <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+                <button onclick="toggleEmojiPicker()" class="btn-icon"><i class="fas fa-smile"></i></button>
+                <input type="file" id="image-input" accept="image/*" class="hidden">
+                <button onclick="document.getElementById('image-input').click()" class="btn-icon"><i class="fas fa-image"></i></button>
+                <button id="record-btn" onclick="startRecording()" class="btn-icon"><i class="fas fa-microphone"></i></button>
+                <button onclick="sendMessage()" class="btn-primary"><i class="fas fa-paper-plane"></i></button>
             </div>
-            <emoji-picker class="hidden mt-2"></emoji-picker>
-        </div>
-    </div>
-    <!-- Profile Modal -->
-    <div id="profileModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-        <div class="bg-gray-800 p-6 rounded-lg w-full max-w-md">
-            <h2 class="text-xl font-bold mb-4">Profile</h2>
-            <form id="profileForm" class="space-y-4">
-                <div>
-                    <label for="profilePicture" class="block text-sm font-medium">Profile Picture URL</label>
-                    <input type="text" id="profilePicture" name="profilePicture" class="w-full p-2 bg-gray-700 rounded">
-                </div>
-                <div>
-                    <label for="bio" class="block text-sm font-medium">Bio</label>
-                    <textarea id="bio" name="bio" class="w-full p-2 bg-gray-700 rounded"></textarea>
-                </div>
-                <div>
-                    <label for="color" class="block text-sm font-medium">Message Color</label>
-                    <input type="color" id="color" name="color" class="w-full p-2 bg-gray-700 rounded">
-                </div>
-                <div>
-                    <label for="language" class="block text-sm font-medium">Language</label>
-                    <select id="language" name="language" class="w-full p-2 bg-gray-700 rounded">
-                        <option value="en">English</option>
-                        <option value="es">Spanish</option>
-                        <option value="fr">French</option>
-                        <option value="de">German</option>
-                        <option value="zh">Chinese</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="muteNotifications" class="flex items-center">
-                        <input type="checkbox" id="muteNotifications" name="muteNotifications" class="mr-2">
-                        Mute Notifications
-                    </label>
-                </div>
-                <div class="flex justify-end space-x-2">
-                    <button type="button" id="closeProfileBtn" class="p-2 bg-gray-600 rounded hover:bg-gray-500">Cancel</button>
-                    <button type="submit" class="p-2 bg-blue-600 rounded hover:bg-blue-700">Save</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    <!-- Call Modal -->
-    <div id="callModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-        <div class="bg-gray-800 p-6 rounded-lg">
-            <h2 class="text-xl font-bold mb-4">Incoming Call</h2>
-            <p id="caller" class="mb-4"></p>
-            <div class="flex justify-end space-x-2">
-                <button id="acceptCallBtn" class="p-2 bg-green-600 rounded hover:bg-green-700">Accept</button>
-                <button id="declineCallBtn" class="p-2 bg-red-600 rounded hover:bg-red-700">Decline</button>
+            <div id="emoji-picker-container" class="hidden absolute bottom-16 right-4 bg-gray-800 border border-gray-700 rounded-lg p-2">
+                <emoji-picker></emoji-picker>
+            </div>
+            <div id="reply-container" class="hidden">
+                <p id="reply-preview" class="text-sm text-gray-300 truncate"></p>
+                <button onclick="cancelReply()" class="btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
-    <script src="/app.js"></script>
+
+    <!-- Modals -->
+    <div id="color-picker-modal" class="modal hidden">
+        <div class="modal-content animate__animated animate__zoomIn">
+            <h3 class="text-indigo-400">Pick a Color</h3>
+            <input type="color" id="color-picker" class="w-full h-10 mt-2">
+            <div class="flex space-x-2 mt-4">
+                <button onclick="changeColor()" class="btn-primary">Apply</button>
+                <button onclick="hideColorPicker()" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <div id="call-modal" class="modal hidden">
+        <div class="modal-content animate__animated animate__zoomIn">
+            <p id="call-status" class="text-indigo-400"></p>
+            <div class="flex space-x-2 mt-4">
+                <button id="accept-call" class="btn-primary">Accept</button>
+                <button id="decline-call" class="btn-secondary">Decline</button>
+            </div>
+        </div>
+    </div>
+    <div id="call-interface" class="fixed bottom-4 right-4 bg-gray-800 p-4 rounded-lg hidden animate__animated animate__slideInUp">
+        <p id="call-with" class="text-indigo-400"></p>
+        <button onclick="hangUp()" class="btn-secondary mt-2">Hang Up</button>
+    </div>
+
+    <audio id="remote-audio" autoplay></audio>
+    <audio id="notification-sound" src="/notification.mp3"></audio>
 </body>
 </html>
