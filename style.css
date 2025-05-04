@@ -89,7 +89,7 @@ body {
 }
 
 .reply-ref {
-    @apply text-xs bg-gray-600 p-2 rounded-lg mb-2 text-gray-300 border-l-4 border-indigo-500;
+    @apply text-xs bg-gray-600 p-2 rounded-lg mb-2 text-white border-l-4 border-indigo-500;
 }
 
 .meta {

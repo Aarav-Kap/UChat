@@ -1,7 +1,7 @@
 {
   "name": "uchat",
   "version": "1.0.0",
-  "description": "A chat app with profiles and school channels",
+  "description": "A redesigned chat app with persistent messages and profiles",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

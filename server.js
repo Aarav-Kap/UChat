@@ -24,6 +24,21 @@ const userSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', userSchema);
 
+const messageSchema = new mongoose.Schema({
+    type: { type: String, required: true }, // 'text', 'image', 'audio'
+    content: { type: String, required: true },
+    username: { type: String, required: true },
+    color: { type: String, required: true },
+    language: { type: String, required: true },
+    senderId: { type: String, required: true },
+    channel: { type: String }, // null for DMs
+    recipientId: { type: String }, // null for channel messages
+    replyTo: { type: String },
+    profilePicture: { type: String },
+    timestamp: { type: Date, default: Date.now },
+});
+const Message = mongoose.model('Message', messageSchema);
+
 const store = new MongoDBStore({
     uri: 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
     collection: 'sessions',
@@ -60,7 +75,7 @@ app.get('/chat', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));
 });
 
-app.get('/profile', async (req, res) => {
+app.get('/profile', (req, res) => {
     if (!req.session.userId) return res.redirect('/');
     res.sendFile(path.join(__dirname, 'profile.html'));
 });
@@ -119,15 +134,26 @@ app.post('/update-profile-picture', async (req, res) => {
     res.json({ success: true });
 });
 
+app.get('/messages', async (req, res) => {
+    const { channel, recipientId } = req.query;
+    const query = recipientId ? {
+        $or: [
+            { senderId: req.session.userId, recipientId },
+            { senderId: recipientId, recipientId: req.session.userId }
+        ]
+    } : { channel };
+    const messages = await Message.find(query).sort({ timestamp: 1 }).limit(100);
+    res.json(messages);
+});
+
 app.get('/logout', (req, res) => {
     req.session.destroy(() => res.redirect('/'));
 });
 
 const connectedUsers = new Map();
-const channels = ['Math', 'Science', 'History', 'English'];
+const channels = ['Main', 'Math', 'Science', 'History', 'English'];
 
 io.on('connection', async (socket) => {
-    console.log('New connection:', socket.id);
     const session = socket.request.session;
     if (!session.userId) return socket.disconnect(true);
 
@@ -140,36 +166,83 @@ io.on('connection', async (socket) => {
         socket.join(channel);
     });
 
-    socket.on('chat message', (msg) => {
-        msg.senderId = user._id.toString();
-        io.to(msg.channel).emit('chat message', msg);
+    socket.on('chat message', async (msg) => {
+        const message = new Message({
+            type: 'text',
+            content: msg.text,
+            username: msg.username,
+            color: msg.color,
+            language: msg.language,
+            senderId: msg.senderId,
+            channel: msg.channel,
+            replyTo: msg.replyTo,
+            profilePicture: msg.profilePicture,
+        });
+        await message.save();
+        io.to(msg.channel).emit('chat message', message);
     });
 
-    socket.on('dm message', (msg) => {
+    socket.on('dm message', async (msg) => {
+        const message = new Message({
+            type: 'text',
+            content: msg.text,
+            username: msg.username,
+            color: msg.color,
+            language: msg.language,
+            senderId: msg.senderId,
+            recipientId: msg.recipientId,
+            replyTo: msg.replyTo,
+            profilePicture: msg.profilePicture,
+        });
+        await message.save();
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
-        if (recipient) io.to(recipient.id).emit('dm message', msg);
-        socket.emit('dm message', msg);
+        if (recipient) io.to(recipient.id).emit('dm message', message);
+        socket.emit('dm message', message);
     });
 
-    socket.on('image message', (msg) => {
-        msg.senderId = user._id.toString();
+    socket.on('image message', async (msg) => {
+        const message = new Message({
+            type: 'image',
+            content: msg.image,
+            username: msg.username,
+            color: msg.color,
+            language: msg.language,
+            senderId: msg.senderId,
+            channel: msg.channel,
+            recipientId: msg.recipientId,
+            replyTo: msg.replyTo,
+            profilePicture: msg.profilePicture,
+        });
+        await message.save();
         if (msg.recipientId) {
             const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
-            if (recipient) io.to(recipient.id).emit('image message', msg);
-            socket.emit('image message', msg);
+            if (recipient) io.to(recipient.id).emit('image message', message);
+            socket.emit('image message', message);
         } else {
-            io.to(msg.channel).emit('image message', msg);
+            io.to(msg.channel).emit('image message', message);
         }
     });
 
-    socket.on('audio message', (msg) => {
-        msg.senderId = user._id.toString();
+    socket.on('audio message', async (msg) => {
+        const message = new Message({
+            type: 'audio',
+            content: msg.audio,
+            username: msg.username,
+            color: msg.color,
+            language: msg.language,
+            senderId: msg.senderId,
+            channel: msg.channel,
+            recipientId: msg.recipientId,
+            replyTo: msg.replyTo,
+            profilePicture: msg.profilePicture,
+        });
+        await message.save();
         if (msg.recipientId) {
             const recipient = Array.from(connectedUsers.values()).find(u => u.userId === msg.recipientId);
-            if (recipient) io.to(recipient.id).emit('audio message', msg);
-            socket.emit('audio message', msg);
+            if (recipient) io.to(recipient.id).emit('audio message', message);
+            socket.emit('audio message', message);
         } else {
-            io.to(msg.channel).emit('audio message', msg);
+            io.to(msg.channel).emit('audio message', message);
         }
     });
 
@@ -190,9 +263,14 @@ io.on('connection', async (socket) => {
         const sender = connectedUsers.get(socket.id);
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
         if (recipient) {
-            io.to(recipient.id).emit('call-made', { offer: data.offer, from: sender.userId, fromUsername: sender.username });
+            io.to(recipient.id).emit('call-made', { 
+                offer: data.offer, 
+                from: sender.userId, 
+                fromUsername: sender.username,
+                fromSocketId: socket.id
+            });
         } else {
-            socket.emit('call-rejected', { to: data.to });
+            socket.emit('call-rejected');
         }
     });
 

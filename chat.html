@@ -48,7 +48,7 @@
             <div class="mt-4 flex items-center space-x-2">
                 <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" oninput="handleTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
                 <button onclick="toggleEmojiPicker()" class="btn-icon"><i class="fas fa-smile"></i></button>
-                <input type="file" id="image-input" accept="image/*" class="hidden">
+                <input type="file" id="image-input" accept="image/*" class="hidden" onchange="sendImage()">
                 <button onclick="document.getElementById('image-input').click()" class="btn-icon"><i class="fas fa-image"></i></button>
                 <button id="record-btn" onclick="startRecording()" class="btn-icon"><i class="fas fa-microphone"></i></button>
                 <button onclick="sendMessage()" class="btn-primary"><i class="fas fa-paper-plane"></i></button>
@@ -56,7 +56,7 @@
             <div id="emoji-picker-container" class="hidden absolute bottom-16 right-4 bg-gray-800 border border-gray-700 rounded-lg p-2">
                 <emoji-picker></emoji-picker>
             </div>
-            <div id="reply-container" class="hidden">
+            <div id="reply-container" class="hidden bg-gray-700 p-2 rounded-lg flex items-center space-x-2 mt-2 shadow-md">
                 <p id="reply-preview" class="text-sm text-gray-300 truncate"></p>
                 <button onclick="cancelReply()" class="btn-secondary">Cancel</button>
             </div>

@@ -4,7 +4,7 @@ const socket = io('https://uchat-997p.onrender.com', {
     reconnection: true,
     reconnectionAttempts: 5,
 });
-let username, userColor, userLanguage, userId, profilePicture, activeTab = 'Math', dmTabs = {};
+let username, userColor, userLanguage, userId, profilePicture, activeTab = 'Main', dmTabs = {};
 let isMuted = false;
 let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
 let replyingTo = null;
@@ -26,9 +26,6 @@ const configuration = {
         },
     ]
 };
-
-socket.on('connect', () => console.log('Socket.IO connected:', socket.id));
-socket.on('connect_error', (err) => console.error('Socket.IO connection error:', err.message));
 
 document.addEventListener('DOMContentLoaded', async () => {
     const response = await fetch('/user', { credentials: 'include' });
@@ -55,6 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         sidebar.classList.toggle('open');
     });
 
+    loadMessages(activeTab);
     socket.emit('join channel', activeTab);
 });
 
@@ -97,8 +95,10 @@ socket.on('dm message', msg => {
         const partnerUsername = msg.username === username ? getRecipientUsername(partnerId) : msg.username;
         createDMTab(partnerId, partnerUsername);
     }
-    handleMessage(msg, dmTabs[partnerId].chat, true);
-    playNotification();
+    if (activeTab === `dm-${partnerId}`) {
+        handleMessage(msg, dmTabs[partnerId].chat, true);
+        playNotification();
+    }
 });
 
 socket.on('image message', msg => {
@@ -200,7 +200,10 @@ socket.on('hang-up', () => {
 });
 
 async function callUser(recipientId) {
-    if (isCalling) return;
+    if (isCalling) {
+        alert('You are already in a call.');
+        return;
+    }
     currentCallRecipient = recipientId;
     isCalling = true;
     await setupPeerConnection(recipientId);
@@ -258,11 +261,27 @@ function hangUp() {
     endCall();
 }
 
+async function loadMessages(channelOrRecipientId) {
+    const chatArea = channelOrRecipientId.startsWith('dm-') ? dmTabs[channelOrRecipientId.replace('dm-', '')].chat : document.getElementById('chat-area').querySelector('.chat-content');
+    chatArea.innerHTML = '';
+    const params = channelOrRecipientId.startsWith('dm-') 
+        ? `recipientId=${channelOrRecipientId.replace('dm-', '')}` 
+        : `channel=${channelOrRecipientId}`;
+    const response = await fetch(`/messages?${params}`, { credentials: 'include' });
+    const messages = await response.json();
+    messages.forEach(msg => {
+        if (msg.type === 'text') handleMessage(msg, chatArea, !!msg.recipientId);
+        else if (msg.type === 'image') handleImageMessage(msg, chatArea, !!msg.recipientId);
+        else if (msg.type === 'audio') handleAudioMessage(msg, chatArea, !!msg.recipientId);
+    });
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
 function handleMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg.messageId || Date.now();
+    div.dataset.messageId = msg._id || Date.now();
     div.style.setProperty('--username-color', msg.color);
 
     let content = `
@@ -279,14 +298,14 @@ function handleMessage(msg, chat, isDM) {
     content += '<div class="message-content">';
     
     if (msg.language !== userLanguage) {
-        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.text)}&langpair=${msg.language}|${userLanguage}`)
+        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.content)}&langpair=${msg.language}|${userLanguage}`)
             .then(res => res.json())
             .then(data => {
-                div.querySelector('.message-content').innerHTML = `<span>${data.responseData.translatedText}</span><div class="meta">(${msg.language}: ${msg.text})</div>`;
+                div.querySelector('.message-content').innerHTML = `<span>${data.responseData.translatedText}</span><div class="meta">(${msg.language}: ${msg.content})</div>`;
                 div.querySelector('.reply-btn').style.display = 'block';
             });
     } else {
-        content += `<span>${msg.text}</span>`;
+        content += `<span>${msg.content}</span>`;
     }
     content += `<button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
     
@@ -299,7 +318,7 @@ function handleImageMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg.messageId || Date.now();
+    div.dataset.messageId = msg._id || Date.now();
     div.style.setProperty('--username-color', msg.color);
 
     let content = `
@@ -313,7 +332,7 @@ function handleImageMessage(msg, chat, isDM) {
         const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
         content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><img src="${msg.image}" alt="Shared image" class="chat-image" onclick="openFullImage('${msg.image}')"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
+    content += `<div class="message-content"><img src="${msg.content}" alt="Shared image" class="chat-image" onclick="openFullImage('${msg.content}')"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
     
     div.innerHTML = content;
     chat.appendChild(div);
@@ -324,7 +343,7 @@ function handleAudioMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
     div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg.messageId || Date.now();
+    div.dataset.messageId = msg._id || Date.now();
     div.style.setProperty('--username-color', msg.color);
 
     let content = `
@@ -338,7 +357,7 @@ function handleAudioMessage(msg, chat, isDM) {
         const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
         content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><audio controls src="${msg.audio}"></audio><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
+    content += `<div class="message-content"><audio controls src="${msg.content}"></audio><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
     
     div.innerHTML = content;
     chat.appendChild(div);
@@ -381,17 +400,23 @@ function createDMTab(recipientId, recipientUsername) {
     document.getElementById('dm-tabs').appendChild(dmTab);
 
     dmTabs[recipientId] = { chat: dmTab.querySelector('.chat-content'), button: tabBtn };
+    loadMessages(`dm-${recipientId}`);
 }
 
 function switchTab(tabId) {
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
     document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-    document.getElementById(tabId === 'Math' ? 'chat-area' : tabId).classList.add('active');
+    document.getElementById(tabId === 'Main' ? 'chat-area' : tabId).classList.add('active');
     activeTab = tabId;
     const input = document.getElementById('message-input');
     input.dataset.recipient = tabId.startsWith('dm-') ? tabId.replace('dm-', '') : '';
     input.placeholder = tabId.startsWith('dm-') ? `DM to ${getRecipientUsername(input.dataset.recipient)}...` : `Message #${activeTab}...`;
+    if (!tabId.startsWith('dm-')) {
+        document.querySelectorAll('.channel-button').forEach(btn => btn.classList.remove('active'));
+        document.querySelector(`[data-channel="${tabId}"]`).classList.add('active');
+        loadMessages(tabId);
+    }
 }
 
 function switchChannel(channel) {
@@ -400,10 +425,10 @@ function switchChannel(channel) {
     activeTab = channel;
     document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
     document.getElementById('chat-area').classList.add('active');
-    document.getElementById('chat-area').querySelector('.chat-content').innerHTML = '';
     document.getElementById('message-input').dataset.recipient = '';
     document.getElementById('message-input').placeholder = `Message #${channel}...`;
     socket.emit('join channel', channel);
+    loadMessages(channel);
 }
 
 function sendMessage() {
@@ -416,7 +441,6 @@ function sendMessage() {
         color: userColor, 
         language: userLanguage, 
         senderId: userId, 
-        messageId: Date.now().toString(),
         profilePicture,
     };
     if (replyingTo) {
@@ -447,7 +471,6 @@ function sendImage() {
             image: reader.result,
             color: userColor, 
             senderId: userId, 
-            messageId: Date.now().toString(),
             profilePicture,
         };
         if (replyingTo) {
@@ -499,7 +522,6 @@ function sendAudioMessage() {
             audio: reader.result,
             color: userColor, 
             senderId: userId, 
-            messageId: Date.now().toString(),
             profilePicture,
         };
         if (replyingTo) {
