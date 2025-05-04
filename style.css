@@ -1,11 +1,36 @@
+:root {
+    --primary-gradient: linear-gradient(to right, #5865F2, #8B5CF6);
+    --primary-gradient-hover: linear-gradient(to right, #4752C4, #7C3AED);
+}
+
 body {
     margin: 0;
+    font-family: 'Inter', sans-serif;
+}
+
+.hidden {
+    display: none;
+}
+
+.font-inter {
+    font-family: 'Inter', sans-serif;
 }
 
 .message {
     display: flex;
     align-items: flex-start;
     max-width: 70%;
+    margin-bottom: 1rem;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: slideIn 0.3s ease forwards;
+}
+
+@keyframes slideIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .message.sent {
@@ -13,22 +38,22 @@ body {
 }
 
 .message-content {
-    background-color: #1E90FF;
+    background: var(--primary-gradient);
     color: white;
     padding: 0.75rem 1rem;
-    border-radius: 0.75rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 1rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .message.received .message-content {
-    background-color: #333;
+    background: #40444B;
     color: white;
 }
 
 .username {
-    font-weight: bold;
+    font-weight: 600;
     margin-bottom: 0.25rem;
-    color: #FF0000;
+    color: #8B5CF6;
 }
 
 .message-body {
@@ -37,18 +62,24 @@ body {
 
 .chat-image {
     max-width: 200px;
-    border-radius: 0.5rem;
-    border: 2px solid #1E90FF;
+    border-radius: 1rem;
+    border: 2px solid #5865F2;
     cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.chat-image:hover {
+    transform: scale(1.05);
 }
 
 .reply-ref {
-    background-color: #444;
+    background: #4B5563;
     padding: 0.5rem;
-    border-left: 4px solid #FF0000;
-    border-radius: 0.375rem;
+    border-left: 4px solid #5865F2;
+    border-radius: 0.5rem;
     margin-bottom: 0.5rem;
-    color: white;
+    color: #D1D5DB;
+    font-size: 0.9rem;
 }
 
 .reactions {
@@ -58,37 +89,42 @@ body {
 }
 
 .reaction {
-    background-color: #FF0000;
+    background: #5865F2;
     padding: 0.25rem 0.5rem;
-    border-radius: 0.375rem;
+    border-radius: 1rem;
     cursor: pointer;
+    font-size: 0.9rem;
+    transition: transform 0.2s ease;
 }
 
-.pinned {
-    background-color: #222;
+.reaction:hover {
+    transform: scale(1.1);
+}
+
+.pinned-message {
+    background: #374151;
     padding: 0.5rem;
-    border-left: 4px solid #1E90FF;
-    border-radius: 0.375rem;
+    border-left: 4px solid #5865F2;
+    border-radius: 0.5rem;
     margin-bottom: 0.5rem;
 }
 
 emoji-picker {
-    --background: #333;
-    --border-color: #FF0000;
-    --category-button-color: #1E90FF;
-    --category-button-active-color: #FF0000;
+    --background: #2C2F33;
+    --border-color: #5865F2;
+    --category-button-color: #5865F2;
+    --category-button-active-color: #8B5CF6;
     --emoji-size: 24px;
 }
 
-/* Ensure buttons are always visible */
 button {
-    opacity: 1 !important;
-    transition: background-color 0.2s ease;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.3s ease;
 }
 
 button:hover {
-    opacity: 1 !important;
-    filter: brightness(1.1);
+    transform: scale(1.05);
 }
 
 @media (max-width: 768px) {

@@ -15,9 +15,10 @@ mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    color: { type: String, default: '#1E90FF' },
+    color: { type: String, default: '#5865F2' },
     language: { type: String, default: 'en' },
     profilePicture: { type: String, default: '' },
+    theme: { type: String, default: 'dark' },
 });
 const User = mongoose.model('User', userSchema);
 
@@ -50,7 +51,7 @@ const store = new MongoDBStore({
 store.on('error', err => console.error('Session error:', err));
 
 const sessionMiddleware = session({
-    secret: 'UChatSecret2025',
+    secret: 'UChatNewSecret2025',
     resave: false,
     saveUninitialized: false,
     store: store,
@@ -65,13 +66,13 @@ io.use((socket, next) => {
 });
 
 app.get('/', (req, res) => {
-    if (req.session.userId) return res.redirect('/app');
+    if (req.session.userId) return res.redirect('/chat');
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.get('/app', (req, res) => {
+app.get('/chat', (req, res) => {
     if (!req.session.userId) return res.redirect('/');
-    res.sendFile(path.join(__dirname, 'app.html'));
+    res.sendFile(path.join(__dirname, 'chat.html'));
 });
 
 app.get('/profile', (req, res) => {
@@ -102,10 +103,10 @@ app.post('/register', async (req, res) => {
 app.get('/user', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const user = await User.findById(req.session.userId);
-    res.json({ username: user.username, color: user.color, language: user.language, userId: user._id.toString(), profilePicture: user.profilePicture });
+    res.json({ username: user.username, color: user.color, language: user.language, userId: user._id.toString(), profilePicture: user.profilePicture, theme: user.theme });
 });
 
-app.post('/change-color', async (req, res) => {
+app.post('/update-color', async (req, res) => {
     const { color } = req.body;
     const user = await User.findById(req.session.userId);
     user.color = color;
@@ -117,6 +118,14 @@ app.post('/update-language', async (req, res) => {
     const { language } = req.body;
     const user = await User.findById(req.session.userId);
     user.language = language;
+    await user.save();
+    res.json({ success: true });
+});
+
+app.post('/update-theme', async (req, res) => {
+    const { theme } = req.body;
+    const user = await User.findById(req.session.userId);
+    user.theme = theme;
     await user.save();
     res.json({ success: true });
 });
@@ -171,7 +180,7 @@ app.get('/logout', (req, res) => {
 });
 
 const connectedUsers = new Map();
-const channels = ['General', 'Tech', 'Gaming', 'Art', 'Music'];
+const channels = ['Math', 'Science', 'History', 'English', 'Study Lounge'];
 
 io.on('connection', async (socket) => {
     const session = socket.request.session;
@@ -179,101 +188,48 @@ io.on('connection', async (socket) => {
 
     const user = await User.findById(session.userId);
     connectedUsers.set(socket.id, { id: socket.id, userId: user._id.toString(), username: user.username, profilePicture: user.profilePicture });
-    io.emit('user list', Array.from(connectedUsers.values()));
+    io.emit('user-list', Array.from(connectedUsers.values()));
     io.emit('channels', channels);
     const groups = await Group.find({ members: user._id });
     socket.emit('groups', groups);
 
-    socket.on('join channel', (channel) => {
+    socket.on('join-channel', (channel) => {
         socket.join(channel);
     });
 
-    socket.on('join group', (groupId) => {
+    socket.on('join-group', (groupId) => {
         socket.join(groupId);
     });
 
-    socket.on('join dm', ({ recipientId, roomId }) => {
+    socket.on('join-dm', ({ roomId }) => {
         socket.join(roomId);
     });
 
-    socket.on('chat message', async (msg) => {
-        const message = new Message({ 
-            type: 'text', 
-            content: msg.text, 
-            username: msg.username, 
-            senderId: msg.senderId, 
-            channel: msg.channel, 
-            profilePicture: msg.profilePicture, 
-            replyTo: msg.replyTo 
+    socket.on('send-message', async (msg) => {
+        const message = new Message({
+            type: msg.type,
+            content: msg.content,
+            username: msg.username,
+            senderId: msg.senderId,
+            channel: msg.channel,
+            groupId: msg.groupId,
+            recipientId: msg.recipientId,
+            replyTo: msg.replyTo,
+            profilePicture: msg.profilePicture,
         });
         await message.save();
-        io.to(msg.channel).emit('chat message', message);
+        const target = msg.roomId || msg.groupId || msg.channel;
+        io.to(target).emit('new-message', message);
     });
 
-    socket.on('group message', async (msg) => {
-        const message = new Message({ 
-            type: 'text', 
-            content: msg.text, 
-            username: msg.username, 
-            senderId: msg.senderId, 
-            groupId: msg.groupId, 
-            profilePicture: msg.profilePicture, 
-            replyTo: msg.replyTo 
-        });
-        await message.save();
-        io.to(msg.groupId).emit('group message', message);
+    socket.on('typing', (data) => {
+        const target = data.roomId || data.groupId || data.channel;
+        socket.to(target).emit('typing', data);
     });
 
-    socket.on('dm message', async ({ roomId, ...msg }) => {
-        const message = new Message({ 
-            type: 'text', 
-            content: msg.text, 
-            username: msg.username, 
-            senderId: msg.senderId, 
-            recipientId: msg.recipientId, 
-            profilePicture: msg.profilePicture, 
-            replyTo: msg.replyTo 
-        });
-        await message.save();
-        io.to(roomId).emit('dm message', message);
-    });
-
-    socket.on('image message', async ({ roomId, ...msg }) => {
-        const message = new Message({ 
-            type: 'image', 
-            content: msg.image, 
-            username: msg.username, 
-            senderId: msg.senderId, 
-            channel: msg.channel, 
-            groupId: msg.groupId, 
-            recipientId: msg.recipientId, 
-            profilePicture: msg.profilePicture, 
-            replyTo: msg.replyTo 
-        });
-        await message.save();
-        if (msg.recipientId) {
-            io.to(roomId).emit('image message', message);
-        } else if (msg.groupId) io.to(msg.groupId).emit('image message', message);
-        else io.to(msg.channel).emit('image message', message);
-    });
-
-    socket.on('audio message', async ({ roomId, ...msg }) => {
-        const message = new Message({ 
-            type: 'audio', 
-            content: msg.audio, 
-            username: msg.username, 
-            senderId: msg.senderId, 
-            channel: msg.channel, 
-            groupId: msg.groupId, 
-            recipientId: msg.recipientId, 
-            profilePicture: msg.profilePicture, 
-            replyTo: msg.replyTo 
-        });
-        await message.save();
-        if (msg.recipientId) {
-            io.to(roomId).emit('audio message', message);
-        } else if (msg.groupId) io.to(msg.groupId).emit('audio message', message);
-        else io.to(msg.channel).emit('audio message', message);
+    socket.on('stop-typing', (data) => {
+        const target = data.roomId || data.groupId || data.channel;
+        socket.to(target).emit('stop-typing', data);
     });
 
     socket.on('reaction', async (data) => {
@@ -286,25 +242,15 @@ io.on('connection', async (socket) => {
         if (userReactions.length === 0) message.reactions.delete(data.reaction);
         await message.save();
         const target = message.recipientId ? [message.senderId, message.recipientId].sort().join('-') : message.groupId ? message.groupId : message.channel;
-        io.to(target).emit('reaction update', { messageId: data.messageId, reaction: data.reaction, reactions: message.reactions });
+        io.to(target).emit('reaction-update', { messageId: data.messageId, reaction: data.reaction, reactions: message.reactions });
     });
 
-    socket.on('pin', async (data) => {
+    socket.on('pin-message', async (data) => {
         const message = await Message.findById(data.messageId);
         message.pinned = !message.pinned;
         await message.save();
         const target = message.recipientId ? [message.senderId, message.recipientId].sort().join('-') : message.groupId ? message.groupId : message.channel;
-        io.to(target).emit('pin update', { messageId: data.messageId, pinned: message.pinned });
-    });
-
-    socket.on('typing', (data) => {
-        const target = data.roomId || data.groupId || data.channel;
-        socket.to(target).emit('typing', data);
-    });
-
-    socket.on('stop typing', (data) => {
-        const target = data.roomId || data.groupId || data.channel;
-        socket.to(target).emit('stop typing', data);
+        io.to(target).emit('pin-update', { messageId: data.messageId, pinned: message.pinned });
     });
 
     socket.on('call-user', (data) => {
@@ -334,7 +280,7 @@ io.on('connection', async (socket) => {
 
     socket.on('disconnect', () => {
         connectedUsers.delete(socket.id);
-        io.emit('user list', Array.from(connectedUsers.values()));
+        io.emit('user-list', Array.from(connectedUsers.values()));
     });
 });
 

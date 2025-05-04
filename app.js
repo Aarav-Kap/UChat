@@ -1,17 +1,43 @@
 const socket = io('http://localhost:10000', { withCredentials: true, transports: ['websocket', 'polling'] });
-let username, userColor, userLanguage, userId, profilePicture, activeTab = 'General', dmTabs = {}, groupTabs = {}, replyingTo = null, currentCallRecipient = null, isCalling = false;
-let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
+let username, userId, userColor, userLanguage, profilePicture, activeTab = 'Math', dmTabs = {}, groupTabs = {}, replyingTo = null;
+let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [], currentCallRecipient = null, isCalling = false, userTheme;
 const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }] };
 
 document.addEventListener('DOMContentLoaded', async () => {
     const response = await fetch('/user', { credentials: 'include' });
     if (!response.ok) return window.location.href = '/';
     const data = await response.json();
-    username = data.username; userColor = data.color; userLanguage = data.language; userId = data.userId; profilePicture = data.profilePicture;
+    username = data.username;
+    userId = data.userId;
+    userColor = data.color;
+    userLanguage = data.language;
+    profilePicture = data.profilePicture;
+    userTheme = data.theme;
     document.getElementById('language-select').value = userLanguage;
+    document.getElementById('sidebar-profile-pic').src = profilePicture || 'https://via.placeholder.com/24';
+    applyTheme(userTheme);
+    socket.emit('join-channel', activeTab);
     loadInitialContent();
-    socket.emit('join channel', activeTab);
 });
+
+function applyTheme(theme) {
+    if (theme === 'light') {
+        document.documentElement.classList.remove('dark');
+    } else {
+        document.documentElement.classList.add('dark');
+    }
+}
+
+async function toggleTheme() {
+    userTheme = userTheme === 'dark' ? 'light' : 'dark';
+    applyTheme(userTheme);
+    await fetch('/update-theme', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: userTheme }),
+        credentials: 'include'
+    });
+}
 
 function loadInitialContent() {
     fetchMessages(activeTab);
@@ -20,84 +46,65 @@ function loadInitialContent() {
 socket.on('channels', channels => {
     const channelList = document.getElementById('channel-list');
     channelList.innerHTML = channels.map(channel => `
-        <li><button class="w-full bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600 ${channel === activeTab ? 'bg-red-600' : ''}" onclick="switchTab('${channel}')">#${channel}</button></li>
+        <li><button class="w-full p-2 rounded-lg ${activeTab === channel ? 'bg-gradient-to-r from-blue-500 to-purple-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all transform hover:scale-105" onclick="switchTab('${channel}', 'channel')">#${channel}</button></li>
     `).join('');
 });
 
 socket.on('groups', groups => {
     const groupList = document.getElementById('group-list');
-    groupList.innerHTML = groups.map(group => `
-        <li><button class="w-full bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>
-    `).join('');
+    groupList.innerHTML = groups.map(group => {
+        groupTabs[group._id] = { title: group.name };
+        return `<li><button class="w-full p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-all transform hover:scale-105" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>`;
+    }).join('');
 });
 
-socket.on('user list', users => {
+socket.on('user-list', users => {
     const dmList = document.getElementById('dm-list');
     dmList.innerHTML = users.filter(u => u.userId !== userId).map(u => `
         <li class="flex items-center space-x-2">
-            <button class="flex-1 bg-blue-700 text-white p-2 rounded-md hover:bg-blue-600 text-left" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</button>
-            <button onclick="callUser('${u.userId}')" class="bg-red-600 text-white p-2 rounded-md hover:bg-red-500"><i class="fas fa-phone"></i></button>
+            <button class="flex-1 p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-left transition-all transform hover:scale-105" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</button>
+            <button onclick="callUser('${u.userId}')" class="bg-gradient-to-r from-blue-500 to-purple-500 p-2 rounded-lg hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all"><i class="fas fa-phone"></i></button>
         </li>
     `).join('');
     const groupMembers = document.getElementById('group-members');
     groupMembers.innerHTML = users.filter(u => u.userId !== userId).map(u => `<option value="${u.userId}">${u.username}</option>`).join('');
 });
 
-socket.on('chat message', msg => {
-    if (activeTab === msg.channel) appendMessage(msg, document.getElementById('messages'));
-    playNotification();
-});
-
-socket.on('group message', msg => {
-    if (activeTab === msg.groupId.toString()) appendMessage(msg, document.getElementById('messages'));
-    playNotification();
-});
-
-socket.on('dm message', msg => {
-    const partnerId = msg.senderId === userId ? msg.recipientId : msg.senderId;
-    if (!dmTabs[partnerId]) startDM(partnerId, msg.username === username ? getUsernameFromId(partnerId) : msg.username);
-    if (activeTab === `dm-${partnerId}`) appendMessage(msg, document.getElementById('messages'));
-    playNotification();
-});
-
-socket.on('image message', msg => {
-    const target = msg.recipientId ? `dm-${msg.senderId === userId ? msg.recipientId : msg.senderId}` : msg.groupId ? msg.groupId.toString() : msg.channel;
-    if (activeTab === target) appendImageMessage(msg, document.getElementById('messages'));
-    playNotification();
-});
-
-socket.on('audio message', msg => {
-    const target = msg.recipientId ? `dm-${msg.senderId === userId ? msg.recipientId : msg.senderId}` : msg.groupId ? msg.groupId.toString() : msg.channel;
-    if (activeTab === target) appendAudioMessage(msg, document.getElementById('messages'));
+socket.on('new-message', msg => {
+    const target = msg.recipientId ? `dm-${[msg.senderId, msg.recipientId].sort().join('-')}` : msg.groupId ? msg.groupId.toString() : msg.channel;
+    if (activeTab === target) {
+        if (msg.type === 'text') appendMessage(msg, document.getElementById('messages'));
+        else if (msg.type === 'image') appendImageMessage(msg, document.getElementById('messages'));
+        else if (msg.type === 'audio') appendAudioMessage(msg, document.getElementById('messages'));
+    }
     playNotification();
 });
 
 socket.on('typing', data => {
-    const target = data.recipientId ? `dm-${data.senderId === userId ? data.recipientId : data.senderId}` : data.groupId ? data.groupId.toString() : data.channel;
+    const target = data.roomId || data.groupId || data.channel;
     if (activeTab === target) {
         document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
     }
 });
 
-socket.on('stop typing', data => {
-    const target = data.recipientId ? `dm-${data.senderId === userId ? data.recipientId : data.senderId}` : data.groupId ? data.groupId.toString() : data.channel;
+socket.on('stop-typing', data => {
+    const target = data.roomId || data.groupId || data.channel;
     if (activeTab === target) {
         document.getElementById('typing-indicator').textContent = '';
     }
 });
 
-socket.on('reaction update', data => {
+socket.on('reaction-update', data => {
     const messageEl = document.querySelector(`[data-message-id="${data.messageId}"]`);
     if (messageEl) {
         const reactionsEl = messageEl.querySelector('.reactions');
-        const reactions = data.reactions || {};
-        reactionsEl.innerHTML = Object.entries(reactions).map(([reaction, users]) => `
+        reactionsEl.innerHTML = Object.entries(data.reactions).map(([reaction, users]) => `
             <span class="reaction" onclick="toggleReaction('${data.messageId}', '${reaction}')">${reaction} ${users.length}</span>
         `).join('');
     }
 });
 
-socket.on('pin update', data => {
+socket.on('pin-update', data => {
     fetchMessages(activeTab);
 });
 
@@ -105,14 +112,17 @@ socket.on('call-made', async data => {
     if (isCalling) { socket.emit('call-rejected', { to: data.from }); return; }
     currentCallRecipient = data.from;
     document.getElementById('call-status').textContent = `Incoming call from ${data.from}...`;
-    document.getElementById('call-modal').style.display = 'flex';
+    document.getElementById('call-modal').classList.remove('hidden');
     document.getElementById('accept-call').onclick = async () => { await acceptCall(data); };
-    document.getElementById('decline-call').onclick = () => { socket.emit('call-rejected', { to: data.from }); document.getElementById('call-modal').style.display = 'none'; };
+    document.getElementById('decline-call').onclick = () => { 
+        socket.emit('call-rejected', { to: data.from }); 
+        document.getElementById('call-modal').classList.add('hidden'); 
+    };
 });
 
 socket.on('answer-made', async data => {
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-    document.getElementById('call-interface').style.display = 'block';
+    document.getElementById('call-interface').classList.remove('hidden');
     document.getElementById('call-with').textContent = `In call with ${data.from}`;
 });
 
@@ -124,19 +134,18 @@ socket.on('call-rejected', () => { alert('Call declined.'); endCall(); });
 socket.on('hang-up', () => endCall());
 
 async function acceptCall(data) {
-    document.getElementById('call-modal').style.display = 'none';
+    document.getElementById('call-modal').classList.add('hidden');
     isCalling = true;
     await setupPeerConnection(data.from);
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
-    socket.emit('make-answer', { answer, to: data.from });
-    document.getElementById('call-interface').style.display = 'block';
-    document.getElementById('call-with').textContent = `In call with ${data.from}`;
+    socket.emit('make-answer', { answer, to: data.from, from: userId });
 }
 
 async function callUser(recipientId) {
     if (isCalling) { alert('Already in a call.'); return; }
-    currentCallRecipient = recipientId; isCalling = true;
+    currentCallRecipient = recipientId;
+    isCalling = true;
     await setupPeerConnection(recipientId);
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
@@ -158,15 +167,18 @@ function endCall() {
     if (peerConnection) peerConnection.close();
     if (localStream) localStream.getTracks().forEach(track => track.stop());
     if (remoteStream) remoteStream.getTracks().forEach(track => track.stop());
-    peerConnection = null; localStream = null; remoteStream = null;
-    currentCallRecipient = null; isCalling = false;
-    document.getElementById('call-interface').style.display = 'none';
+    peerConnection = null;
+    localStream = null;
+    remoteStream = null;
+    currentCallRecipient = null;
+    isCalling = false;
+    document.getElementById('call-interface').classList.add('hidden');
     document.getElementById('remote-audio').srcObject = null;
 }
 
-function hangUp() { 
-    if (currentCallRecipient) socket.emit('hang-up', { to: currentCallRecipient }); 
-    endCall(); 
+function hangUp() {
+    if (currentCallRecipient) socket.emit('hang-up', { to: currentCallRecipient });
+    endCall();
 }
 
 async function fetchMessages(tab) {
@@ -192,7 +204,7 @@ function appendMessage(msg, container) {
     div.dataset.messageId = msg._id;
     let content = `
         <div class="flex items-center space-x-2">
-            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
+            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-8 h-8 rounded-full transform hover:scale-110 transition-all">
             <span class="username">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
@@ -204,7 +216,7 @@ function appendMessage(msg, container) {
     content += `
         <div class="message-content">
             <div class="message-body"><span>${msg.content}</span></div>
-            <div class="actions">
+            <div class="actions space-x-2 mt-2 flex">
                 <button onclick="translateMessage('${msg._id}', '${msg.content}')">Translate</button>
                 <button onclick="startReply('${msg._id}')">Reply</button>
                 <button onclick="togglePin('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button>
@@ -223,21 +235,20 @@ function appendMessage(msg, container) {
 
 function appendPinnedMessage(msg, container) {
     const div = document.createElement('div');
-    div.className = 'pinned';
+    div.className = 'pinned-message';
     div.dataset.messageId = msg._id;
-    let content = `
+    div.innerHTML = `
         <div class="flex items-center space-x-2">
-            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
+            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-8 h-8 rounded-full transform hover:scale-110 transition-all">
             <span class="username">${msg.username === username ? 'You' : msg.username}</span>
         </div>
         <div class="message-content">
             <div class="message-body"><span>${msg.content}</span></div>
-            <div class="actions">
+            <div class="actions space-x-2 mt-2 flex">
                 <button onclick="togglePin('${msg._id}')">Unpin</button>
             </div>
         </div>
     `;
-    div.innerHTML = content;
     container.appendChild(div);
 }
 
@@ -247,19 +258,19 @@ function appendImageMessage(msg, container) {
     div.dataset.messageId = msg._id;
     let content = `
         <div class="flex items-center space-x-2">
-            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
+            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-8 h-8 rounded-full transform hover:scale-110 transition-all">
             <span class="username">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
     if (msg.replyTo) {
         const repliedMsg = document.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Image';
+        const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Media';
         content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username')?.textContent || 'Unknown'}: ${repliedText}</div>`;
     }
     content += `
         <div class="message-content">
             <div class="message-body"><img src="${msg.content}" alt="Image" class="chat-image" onclick="openImage('${msg.content}')"></div>
-            <div class="actions">
+            <div class="actions space-x-2 mt-2 flex">
                 <button onclick="startReply('${msg._id}')">Reply</button>
                 <button onclick="togglePin('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button>
                 <button onclick="toggleReaction('${msg._id}', '👍')">👍</button>
@@ -281,19 +292,19 @@ function appendAudioMessage(msg, container) {
     div.dataset.messageId = msg._id;
     let content = `
         <div class="flex items-center space-x-2">
-            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
+            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-8 h-8 rounded-full transform hover:scale-110 transition-all">
             <span class="username">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
     if (msg.replyTo) {
         const repliedMsg = document.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Audio';
+        const repliedText = repliedMsg?.querySelector('.message-body span')?.textContent || 'Media';
         content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username')?.textContent || 'Unknown'}: ${repliedText}</div>`;
     }
     content += `
         <div class="message-content">
             <div class="message-body"><audio controls src="${msg.content}"></audio></div>
-            <div class="actions">
+            <div class="actions space-x-2 mt-2 flex">
                 <button onclick="startReply('${msg._id}')">Reply</button>
                 <button onclick="togglePin('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button>
                 <button onclick="toggleReaction('${msg._id}', '👍')">👍</button>
@@ -321,13 +332,13 @@ function startReply(messageId) {
     replyingTo = messageId;
     const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
     document.getElementById('reply-preview').textContent = `Replying to ${repliedMsg.querySelector('.username').textContent}: ${repliedMsg.querySelector('.message-body span')?.textContent || 'Media'}`;
-    document.getElementById('reply-container').style.display = 'flex';
+    document.getElementById('reply-container').classList.remove('hidden');
     document.getElementById('message-input').focus();
 }
 
 function cancelReply() {
     replyingTo = null;
-    document.getElementById('reply-container').style.display = 'none';
+    document.getElementById('reply-container').classList.add('hidden');
 }
 
 async function toggleReaction(messageId, reaction) {
@@ -347,16 +358,16 @@ async function togglePin(messageId) {
         body: JSON.stringify({ messageId }),
         credentials: 'include'
     });
-    socket.emit('pin', { messageId, userId });
+    socket.emit('pin-message', { messageId, userId });
 }
 
 function startDM(recipientId, recipientUsername) {
-    if (!dmTabs[recipientId]) {
-        dmTabs[recipientId] = { title: recipientUsername };
-        const roomId = [userId, recipientId].sort().join('-');
-        socket.emit('join dm', { recipientId, roomId });
+    const roomId = [userId, recipientId].sort().join('-');
+    if (!dmTabs[roomId]) {
+        dmTabs[roomId] = { title: recipientUsername };
+        socket.emit('join-dm', { roomId });
     }
-    switchTab(recipientId, 'dm');
+    switchTab(roomId, 'dm');
 }
 
 function toggleGroupCreation() {
@@ -375,52 +386,52 @@ async function createGroup() {
     });
     const data = await response.json();
     if (data.success) {
-        socket.emit('join group', data.groupId);
+        socket.emit('join-group', data.groupId);
         document.getElementById('group-name').value = '';
         document.getElementById('group-members').selectedIndex = -1;
         toggleGroupCreation();
     }
 }
 
-function switchTab(tabId, type = 'channel') {
+function switchTab(tabId, type) {
     activeTab = type === 'channel' ? tabId : type === 'group' ? tabId : `dm-${tabId}`;
     document.getElementById('chat-title').textContent = type === 'channel' ? `#${tabId}` : type === 'group' ? (groupTabs[tabId]?.title || 'Group') : dmTabs[tabId]?.title || 'DM';
     fetchMessages(activeTab);
-    if (type === 'channel') socket.emit('join channel', tabId);
-    else if (type === 'group') socket.emit('join group', tabId);
-    else if (type === 'dm') {
-        const roomId = [userId, tabId].sort().join('-');
-        socket.emit('join dm', { recipientId: tabId, roomId });
-    }
+    if (type === 'channel') socket.emit('join-channel', tabId);
+    else if (type === 'group') socket.emit('join-group', tabId);
+    else if (type === 'dm') socket.emit('join-dm', { roomId: tabId });
 }
 
 function showSettings() {
-    document.getElementById('settings-modal').style.display = 'flex';
+    document.getElementById('settings-modal').classList.remove('hidden');
 }
 
 function hideSettings() {
-    document.getElementById('settings-modal').style.display = 'none';
+    document.getElementById('settings-modal').classList.add('hidden');
 }
 
 function showColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'flex';
+    document.getElementById('color-picker-modal').classList.remove('hidden');
     document.getElementById('color-picker').value = userColor;
 }
 
 function hideColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'none';
+    document.getElementById('color-picker-modal').classList.add('hidden');
 }
 
 async function changeColor() {
     const newColor = document.getElementById('color-picker').value;
-    const response = await fetch('/change-color', {
+    const response = await fetch('/update-color', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ color: newColor }),
         credentials: 'include'
     });
     const data = await response.json();
-    if (data.success) { userColor = newColor; hideColorPicker(); }
+    if (data.success) {
+        userColor = newColor;
+        hideColorPicker();
+    }
 }
 
 async function updateLanguage() {
@@ -433,32 +444,35 @@ async function updateLanguage() {
     });
 }
 
+async function logout() {
+    await fetch('/logout', { credentials: 'include' });
+    window.location.href = '/';
+}
+
 function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text) return;
-    const msg = { username, text, senderId: userId, profilePicture };
-    if (replyingTo) { 
-        msg.replyTo = replyingTo; 
-        cancelReply(); 
+    const msg = { type: 'text', content: text, username, senderId: userId, profilePicture };
+    if (replyingTo) {
+        msg.replyTo = replyingTo;
+        cancelReply();
     }
     if (activeTab.startsWith('dm-')) {
-        const recipientId = activeTab.replace('dm-', '');
-        const roomId = [userId, recipientId].sort().join('-');
-        msg.recipientId = recipientId;
-        socket.emit('dm message', { ...msg, roomId });
+        const roomId = activeTab.replace('dm-', '');
+        msg.recipientId = roomId.split('-').find(id => id !== userId);
+        msg.roomId = roomId;
     } else if (activeTab.startsWith('group-')) {
         msg.groupId = activeTab;
-        socket.emit('group message', msg);
     } else {
         msg.channel = activeTab;
-        socket.emit('chat message', msg);
     }
+    socket.emit('send-message', msg);
     input.value = '';
-    socket.emit('stop typing', { 
-        channel: activeTab.startsWith('channel-') ? activeTab : null,
-        groupId: activeTab.startsWith('group-') ? activeTab : null,
-        recipientId: activeTab.startsWith('dm-') ? activeTab.replace('dm-', '') : null,
+    socket.emit('stop-typing', { 
+        channel: msg.channel,
+        groupId: msg.groupId,
+        roomId: msg.roomId,
         username 
     });
 }
@@ -468,23 +482,21 @@ function sendImage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-        const msg = { username, image: reader.result, senderId: userId, profilePicture };
-        if (replyingTo) { 
-            msg.replyTo = replyingTo; 
-            cancelReply(); 
+        const msg = { type: 'image', content: reader.result, username, senderId: userId, profilePicture };
+        if (replyingTo) {
+            msg.replyTo = replyingTo;
+            cancelReply();
         }
         if (activeTab.startsWith('dm-')) {
-            const recipientId = activeTab.replace('dm-', '');
-            const roomId = [userId, recipientId].sort().join('-');
-            msg.recipientId = recipientId;
-            socket.emit('image message', { ...msg, roomId });
+            const roomId = activeTab.replace('dm-', '');
+            msg.recipientId = roomId.split('-').find(id => id !== userId);
+            msg.roomId = roomId;
         } else if (activeTab.startsWith('group-')) {
             msg.groupId = activeTab;
-            socket.emit('image message', msg);
         } else {
             msg.channel = activeTab;
-            socket.emit('image message', msg);
         }
+        socket.emit('send-message', msg);
         document.getElementById('image-input').value = '';
     };
     reader.readAsDataURL(file);
@@ -519,23 +531,21 @@ function sendAudioMessage() {
     const blob = new Blob(audioChunks, { type: 'audio/webm' });
     const reader = new FileReader();
     reader.onload = () => {
-        const msg = { username, audio: reader.result, senderId: userId, profilePicture };
-        if (replyingTo) { 
-            msg.replyTo = replyingTo; 
-            cancelReply(); 
+        const msg = { type: 'audio', content: reader.result, username, senderId: userId, profilePicture };
+        if (replyingTo) {
+            msg.replyTo = replyingTo;
+            cancelReply();
         }
         if (activeTab.startsWith('dm-')) {
-            const recipientId = activeTab.replace('dm-', '');
-            const roomId = [userId, recipientId].sort().join('-');
-            msg.recipientId = recipientId;
-            socket.emit('audio message', { ...msg, roomId });
+            const roomId = activeTab.replace('dm-', '');
+            msg.recipientId = roomId.split('-').find(id => id !== userId);
+            msg.roomId = roomId;
         } else if (activeTab.startsWith('group-')) {
             msg.groupId = activeTab;
-            socket.emit('audio message', msg);
         } else {
             msg.channel = activeTab;
-            socket.emit('audio message', msg);
         }
+        socket.emit('send-message', msg);
     };
     reader.readAsDataURL(blob);
 }
@@ -543,8 +553,9 @@ function sendAudioMessage() {
 function handleTyping() {
     const data = { username, senderId: userId };
     if (activeTab.startsWith('dm-')) {
-        data.recipientId = activeTab.replace('dm-', '');
-        data.roomId = [userId, data.recipientId].sort().join('-');
+        const roomId = activeTab.replace('dm-', '');
+        data.roomId = roomId;
+        data.recipientId = roomId.split('-').find(id => id !== userId);
     } else if (activeTab.startsWith('group-')) {
         data.groupId = activeTab;
     } else {
@@ -552,7 +563,7 @@ function handleTyping() {
     }
     socket.emit('typing', data);
     clearTimeout(window.typingTimeout);
-    window.typingTimeout = setTimeout(() => socket.emit('stop typing', data), 1000);
+    window.typingTimeout = setTimeout(() => socket.emit('stop-typing', data), 1000);
 }
 
 function playNotification() {
@@ -575,10 +586,4 @@ function toggleEmojiPicker() {
             picker.classList.add('hidden');
         }, { once: true });
     }
-}
-
-function getUsernameFromId(id) {
-    const dmButton = Array.from(document.querySelectorAll('#dm-list button'))
-        .find(btn => btn.onclick.toString().includes(id));
-    return dmButton ? dmButton.textContent : 'Unknown';
 }
