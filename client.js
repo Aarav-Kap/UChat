@@ -1,304 +1,192 @@
-const socket = io('https://uchat-997p.onrender.com', {
-    withCredentials: true,
-    transports: ['websocket', 'polling'],
-});
-let username, userColor, userLanguage, userId, profilePicture, activeTab = 'General', dmTabs = {};
-let isMuted = false;
-let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
-let replyingTo = null;
-let currentCallRecipient = null;
-let isCalling = false;
-const configuration = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelayproject',
-            credential: 'openrelayproject',
-        },
-        {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject',
-            credential: 'openrelayproject',
-        },
-    ]
-};
+const socket = io('https://uchat-997p.onrender.com', { withCredentials: true, transports: ['websocket', 'polling'] });
+let username, userColor, userLanguage, userId, profilePicture, activeTab = 'General', dmTabs = {}, groupTabs = {}, isDarkMode = false, unreadCounts = {};
+let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [], replyingTo = null, currentCallRecipient = null, isCalling = false;
+const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }] };
 
 document.addEventListener('DOMContentLoaded', async () => {
     const response = await fetch('/user', { credentials: 'include' });
     if (!response.ok) return window.location.href = '/';
     const data = await response.json();
-    username = data.username;
-    userColor = data.color;
-    userLanguage = data.language;
-    userId = data.userId;
-    profilePicture = data.profilePicture;
-    document.getElementById('current-username').textContent = `Hello, ${username}`;
-    document.getElementById('language-select').value = userLanguage;
+    username = data.username; userColor = data.color; userLanguage = data.language; userId = data.userId; profilePicture = data.profilePicture;
+    document.getElementById('current-username').textContent = username;
 
     const picker = document.querySelector('emoji-picker');
     picker.addEventListener('emoji-click', event => {
-        const input = document.getElementById('message-input');
-        input.value += event.detail.unicode;
-        input.focus();
+        document.getElementById('message-input').value += event.detail.unicode;
         toggleEmojiPicker();
     });
 
-    document.getElementById('mobile-menu-btn').addEventListener('click', () => {
-        const sidebar = document.getElementById('sidebar');
-        sidebar.classList.toggle('open');
-    });
-
-    loadMessages(activeTab);
-    socket.emit('join channel', activeTab);
+    loadInitialContent();
 });
+
+function loadInitialContent() {
+    socket.emit('join channel', activeTab);
+    fetchMessages(activeTab);
+    updateSidebar();
+}
 
 socket.on('channels', channels => {
     const channelList = document.getElementById('channel-list');
     channelList.innerHTML = channels.map(channel => `
-        <li>
-            <button class="w-full text-left px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition duration-200 ${channel === activeTab ? 'bg-green-500' : ''}" data-channel="${channel}" onclick="switchChannel('${channel}')">
-                # ${channel}
-            </button>
-        </li>
+        <li><button class="w-full text-left px-2 py-1 bg-gray-200 rounded hover:bg-blue-100 ${channel === activeTab ? 'bg-blue-200' : ''}" data-channel="${channel}" onclick="switchTab('${channel}')"># ${channel}</button></li>
     `).join('');
-    const tabs = document.getElementById('tabs');
-    tabs.innerHTML = `<button class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg mr-2 active-tab" data-tab="General" onclick="switchTab('General')"># General</button>`;
+});
+
+socket.on('groups', groups => {
+    const groupList = document.getElementById('group-list');
+    groupList.innerHTML = groups.map(group => `
+        <li><button class="w-full text-left px-2 py-1 bg-gray-200 rounded hover:bg-blue-100" data-group="${group._id}" onclick="switchTab('${group._id}', 'group')">${group.name}</button></li>
+    `).join('');
 });
 
 socket.on('user list', users => {
     const ul = document.getElementById('user-list');
-    ul.innerHTML = users
-        .filter(u => u.userId !== userId)
-        .map(u => `
-            <li class="flex items-center space-x-2">
-                <img src="${u.profilePicture || 'https://via.placeholder.com/32'}" alt="${u.username}" class="w-8 h-8 rounded-full">
-                <span class="flex-1 cursor-pointer" onclick="startDM('${u.userId}', '${u.username}')">${u.username}</span>
-                <button onclick="callUser('${u.userId}')" class="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600"><i class="fas fa-phone"></i></button>
-            </li>
-        `)
-        .join('');
+    ul.innerHTML = users.filter(u => u.userId !== userId).map(u => `
+        <li class="flex items-center space-x-2"><img src="${u.profilePicture || 'https://via.placeholder.com/32'}" alt="${u.username}" class="w-8 h-8 rounded-full"><span onclick="startDM('${u.userId}', '${u.username}')" class="cursor-pointer flex-1">${u.username}</span><button onclick="callUser('${u.userId}')" class="bg-blue-600 text-white p-1 rounded hover:bg-orange-500"><i class="fas fa-phone"></i></button></li>
+    `).join('');
     document.getElementById('user-count').textContent = users.length;
+    document.getElementById('group-members').innerHTML = users.filter(u => u.userId !== userId).map(u => `<option value="${u.userId}">${u.username}</option>`).join('');
 });
 
 socket.on('chat message', msg => {
-    if (msg.channel === activeTab) {
-        appendMessage(msg, document.getElementById('chat-area').querySelector('.chat-content'), false);
-        playNotification();
-    }
+    if (activeTab === msg.channel) appendMessage(msg, document.querySelector('.chat-content'), false);
+    else unreadCounts[msg.channel] = (unreadCounts[msg.channel] || 0) + 1;
+    updateUnreadBadges();
+    playNotification();
+});
+
+socket.on('group message', msg => {
+    if (activeTab === msg.groupId.toString()) appendMessage(msg, document.querySelector('.chat-content'), false);
+    else unreadCounts[msg.groupId] = (unreadCounts[msg.groupId] || 0) + 1;
+    updateUnreadBadges();
+    playNotification();
 });
 
 socket.on('dm message', msg => {
     const partnerId = msg.senderId === userId ? msg.recipientId : msg.senderId;
-    if (!dmTabs[partnerId]) {
-        const partnerUsername = msg.username === username ? getRecipientUsername(partnerId) : msg.username;
-        createDMTab(partnerId, partnerUsername);
-    }
-    if (activeTab === `dm-${partnerId}`) {
-        appendMessage(msg, dmTabs[partnerId].chat, true);
-        playNotification();
-    }
+    if (!dmTabs[partnerId]) startDM(partnerId, getUsernameFromId(partnerId));
+    if (activeTab === `dm-${partnerId}`) appendMessage(msg, dmTabs[partnerId].chat, true);
+    else unreadCounts[`dm-${partnerId}`] = (unreadCounts[`dm-${partnerId}`] || 0) + 1;
+    updateUnreadBadges();
+    playNotification();
 });
 
 socket.on('image message', msg => {
-    const partnerId = msg.recipientId ? (msg.senderId === userId ? msg.recipientId : msg.senderId) : null;
-    const chat = partnerId ? dmTabs[partnerId]?.chat : document.getElementById('chat-area').querySelector('.chat-content');
-    if (chat && (!msg.channel || msg.channel === activeTab)) {
-        appendImageMessage(msg, chat, !!partnerId);
-        playNotification();
-    }
+    const target = msg.recipientId ? `dm-${msg.senderId === userId ? msg.recipientId : msg.senderId}` : msg.groupId ? msg.groupId.toString() : msg.channel;
+    if (activeTab === target) appendImageMessage(msg, document.querySelector('.chat-content'), !!msg.recipientId);
+    else unreadCounts[target] = (unreadCounts[target] || 0) + 1;
+    updateUnreadBadges();
+    playNotification();
 });
 
 socket.on('audio message', msg => {
-    const partnerId = msg.recipientId ? (msg.senderId === userId ? msg.recipientId : msg.senderId) : null;
-    const chat = partnerId ? dmTabs[partnerId]?.chat : document.getElementById('chat-area').querySelector('.chat-content');
-    if (chat && (!msg.channel || msg.channel === activeTab)) {
-        appendAudioMessage(msg, chat, !!partnerId);
-        playNotification();
-    }
+    const target = msg.recipientId ? `dm-${msg.senderId === userId ? msg.recipientId : msg.senderId}` : msg.groupId ? msg.groupId.toString() : msg.channel;
+    if (activeTab === target) appendAudioMessage(msg, document.querySelector('.chat-content'), !!msg.recipientId);
+    else unreadCounts[target] = (unreadCounts[target] || 0) + 1;
+    updateUnreadBadges();
+    playNotification();
 });
 
 socket.on('typing', data => {
-    if (data.channel === activeTab) document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
+    if (activeTab === data.channel || activeTab === data.groupId) document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
 });
 
 socket.on('stop typing', data => {
-    if (data.channel === activeTab) document.getElementById('typing-indicator').textContent = '';
+    if (activeTab === data.channel || activeTab === data.groupId) document.getElementById('typing-indicator').textContent = '';
 });
 
 socket.on('call-made', async data => {
-    if (isCalling) {
-        socket.emit('call-rejected', { to: data.from });
-        return;
-    }
+    if (isCalling) { socket.emit('call-rejected', { to: data.from }); return; }
     currentCallRecipient = data.from;
-    document.getElementById('call-status').textContent = `${data.fromUsername} is calling you...`;
+    document.getElementById('call-status').textContent = `${data.fromUsername} is calling...`;
     document.getElementById('call-modal').style.display = 'flex';
-
-    document.getElementById('accept-call').onclick = async () => {
-        document.getElementById('call-modal').style.display = 'none';
-        isCalling = true;
-        await setupPeerConnection(data.from);
-        try {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('make-answer', { answer, to: data.from });
-            document.getElementById('call-interface').style.display = 'block';
-            document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
-        } catch (e) {
-            console.error('Error accepting call:', e);
-            endCall();
-        }
-    };
-
-    document.getElementById('decline-call').onclick = () => {
-        document.getElementById('call-modal').style.display = 'none';
-        socket.emit('call-rejected', { to: data.from });
-    };
+    document.getElementById('accept-call').onclick = async () => { await acceptCall(data); };
+    document.getElementById('decline-call').onclick = () => { socket.emit('call-rejected', { to: data.from }); document.getElementById('call-modal').style.display = 'none'; };
 });
 
 socket.on('answer-made', async data => {
-    try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-        document.getElementById('call-interface').style.display = 'block';
-        document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
-    } catch (e) {
-        console.error('Error setting answer:', e);
-        endCall();
-    }
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    document.getElementById('call-interface').style.display = 'block';
+    document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
 });
 
 socket.on('ice-candidate', async data => {
-    if (peerConnection && data.candidate) {
-        try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {
-            console.error('Error adding ICE candidate:', e);
-        }
-    }
+    if (peerConnection && data.candidate) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
 });
 
-socket.on('call-rejected', () => {
-    alert('Call was declined.');
-    endCall();
-});
+socket.on('call-rejected', () => { alert('Call declined.'); endCall(); });
+socket.on('hang-up', () => endCall());
 
-socket.on('hang-up', () => {
-    endCall();
-});
+async function acceptCall(data) {
+    document.getElementById('call-modal').style.display = 'none';
+    isCalling = true;
+    await setupPeerConnection(data.from);
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    socket.emit('make-answer', { answer, to: data.from });
+    document.getElementById('call-interface').style.display = 'block';
+    document.getElementById('call-with').textContent = `In call with ${data.fromUsername}`;
+}
 
 async function callUser(recipientId) {
-    if (isCalling) {
-        alert('You are already in a call.');
-        return;
-    }
-    currentCallRecipient = recipientId;
-    isCalling = true;
+    if (isCalling) { alert('Already in a call.'); return; }
+    currentCallRecipient = recipientId; isCalling = true;
     await setupPeerConnection(recipientId);
-    try {
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        socket.emit('call-user', { offer, to: recipientId });
-    } catch (e) {
-        console.error('Error creating offer:', e);
-        endCall();
-    }
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit('call-user', { offer, to: recipientId });
 }
 
 async function setupPeerConnection(recipientId) {
-    if (peerConnection) endCall();
     peerConnection = new RTCPeerConnection(configuration);
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-        remoteStream = new MediaStream();
-        document.getElementById('remote-audio').srcObject = remoteStream;
-
-        peerConnection.ontrack = event => {
-            event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
-        };
-
-        peerConnection.onicecandidate = event => {
-            if (event.candidate) socket.emit('ice-candidate', { candidate: event.candidate, to: recipientId });
-        };
-
-        peerConnection.oniceconnectionstatechange = () => {
-            if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') endCall();
-        };
-    } catch (e) {
-        console.error('Error setting up peer connection:', e);
-        endCall();
-    }
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    remoteStream = new MediaStream();
+    document.getElementById('remote-audio').srcObject = remoteStream;
+    peerConnection.ontrack = event => remoteStream.addTrack(event.track);
+    peerConnection.onicecandidate = event => event.candidate && socket.emit('ice-candidate', { candidate: event.candidate, to: recipientId });
+    peerConnection.oniceconnectionstatechange = () => { if (peerConnection.iceConnectionState === 'disconnected') endCall(); };
 }
 
 function endCall() {
     if (peerConnection) peerConnection.close();
     if (localStream) localStream.getTracks().forEach(track => track.stop());
     if (remoteStream) remoteStream.getTracks().forEach(track => track.stop());
-    peerConnection = null;
-    localStream = null;
-    remoteStream = null;
-    currentCallRecipient = null;
-    isCalling = false;
+    peerConnection = null; localStream = null; remoteStream = null;
+    currentCallRecipient = null; isCalling = false;
     document.getElementById('call-interface').style.display = 'none';
     document.getElementById('remote-audio').srcObject = null;
 }
 
-function hangUp() {
-    if (currentCallRecipient) socket.emit('hang-up', { to: currentCallRecipient });
-    endCall();
-}
+function hangUp() { if (currentCallRecipient) socket.emit('hang-up', { to: currentCallRecipient }); endCall(); }
 
-async function loadMessages(channelOrRecipientId) {
-    const chatArea = channelOrRecipientId.startsWith('dm-') ? dmTabs[channelOrRecipientId.replace('dm-', '')].chat : document.getElementById('chat-area').querySelector('.chat-content');
-    chatArea.innerHTML = '';
-    const params = channelOrRecipientId.startsWith('dm-') 
-        ? `recipientId=${channelOrRecipientId.replace('dm-', '')}` 
-        : `channel=${channelOrRecipientId}`;
+async function fetchMessages(tab) {
+    const chat = document.querySelector('.chat-content');
+    chat.innerHTML = '';
+    const params = tab.startsWith('dm-') ? `recipientId=${tab.replace('dm-', '')}` : tab.includes('group-') ? `groupId=${tab.replace('group-', '')}` : `channel=${tab}`;
     const response = await fetch(`/messages?${params}`, { credentials: 'include' });
     const messages = await response.json();
     messages.forEach(msg => {
-        if (msg.type === 'text') appendMessage(msg, chatArea, !!msg.recipientId);
-        else if (msg.type === 'image') appendImageMessage(msg, chatArea, !!msg.recipientId);
-        else if (msg.type === 'audio') appendAudioMessage(msg, chatArea, !!msg.recipientId);
+        if (msg.type === 'text') appendMessage(msg, chat, !!msg.recipientId);
+        else if (msg.type === 'image') appendImageMessage(msg, chat, !!msg.recipientId);
+        else if (msg.type === 'audio') appendAudioMessage(msg, chat, !!msg.recipientId);
     });
-    chatArea.scrollTop = chatArea.scrollHeight;
+    chat.scrollTop = chat.scrollHeight;
+    if (unreadCounts[tab]) { unreadCounts[tab] = 0; updateUnreadBadges(); }
 }
 
 function appendMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
-    div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg._id || Date.now();
+    div.dataset.messageId = msg._id;
     div.style.setProperty('--username-color', msg.color);
-
-    let content = `
-        <div class="flex items-center space-x-2">
-            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
-        </div>`;
+    let content = `<div class="flex items-center space-x-2"><img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full"><span class="username">${msg.username === username ? 'You' : msg.username}</span></div>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
-        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
-        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
+        const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Message';
+        content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += '<div class="message-content">';
-    
-    if (msg.language !== userLanguage) {
-        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(msg.content)}&langpair=${msg.language}|${userLanguage}`)
-            .then(res => res.json())
-            .then(data => {
-                div.querySelector('.message-content').innerHTML = `<span>${data.responseData.translatedText}</span><div class="meta">(${msg.language}: ${msg.content})</div>`;
-                div.querySelector('.reply-btn').style.display = 'block';
-            });
-    } else {
-        content += `<span>${msg.content}</span>`;
-    }
-    content += `<button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
-    
+    content += `<div class="message-content"><span>${msg.language !== userLanguage ? translate(msg.content, msg.language) : msg.content}</span><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button></div>`;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -307,23 +195,15 @@ function appendMessage(msg, chat, isDM) {
 function appendImageMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
-    div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg._id || Date.now();
+    div.dataset.messageId = msg._id;
     div.style.setProperty('--username-color', msg.color);
-
-    let content = `
-        <div class="flex items-center space-x-2">
-            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
-        </div>`;
+    let content = `<div class="flex items-center space-x-2"><img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full"><span class="username">${msg.username === username ? 'You' : msg.username}</span></div>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
-        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
-        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
+        const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Image';
+        content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><img src="${msg.content}" alt="Shared image" class="chat-image" onclick="openFullImage('${msg.content}')"><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
-    
+    content += `<div class="message-content"><img src="${msg.content}" alt="Image" class="chat-image" onclick="openImage('${msg.content}')"><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button></div>`;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -332,23 +212,15 @@ function appendImageMessage(msg, chat, isDM) {
 function appendAudioMessage(msg, chat, isDM) {
     const div = document.createElement('div');
     div.className = `message ${msg.senderId === userId ? 'sent' : 'received'}`;
-    div.dataset.senderId = msg.senderId;
-    div.dataset.messageId = msg._id || Date.now();
+    div.dataset.messageId = msg._id;
     div.style.setProperty('--username-color', msg.color);
-
-    let content = `
-        <div class="flex items-center space-x-2">
-            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
-        </div>`;
+    let content = `<div class="flex items-center space-x-2"><img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full"><span class="username">${msg.username === username ? 'You' : msg.username}</span></div>`;
     if (msg.replyTo) {
         const repliedMsg = chat.querySelector(`[data-message-id="${msg.replyTo}"]`);
-        const repliedText = repliedMsg ? repliedMsg.querySelector('.message-content span:not(.username)')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio' : 'Message not found';
-        const repliedUsername = repliedMsg ? repliedMsg.querySelector('.username').textContent : 'Unknown';
-        content += `<div class="reply-ref">Replying to ${repliedUsername}: ${repliedText}</div>`;
+        const repliedText = repliedMsg?.querySelector('.message-content span')?.textContent || 'Audio';
+        content += `<div class="reply-ref">Replying to ${repliedMsg?.querySelector('.username').textContent || 'Unknown'}: ${repliedText}</div>`;
     }
-    content += `<div class="message-content"><audio controls src="${msg.content}"></audio><button class="reply-btn" onclick="startReply('${div.dataset.messageId}')">Reply</button></div>`;
-    
+    content += `<div class="message-content"><audio controls src="${msg.content}"></audio><button class="reply-btn" onclick="startReply('${msg._id}')">Reply</button></div>`;
     div.innerHTML = content;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
@@ -357,157 +229,95 @@ function appendAudioMessage(msg, chat, isDM) {
 function startReply(messageId) {
     replyingTo = messageId;
     const repliedMsg = document.querySelector(`[data-message-id="${messageId}"]`);
-    const repliedUsername = repliedMsg.querySelector('.username').textContent;
-    const repliedText = repliedMsg.querySelector('.message-content span')?.textContent || repliedMsg.querySelector('img')?.alt || 'Audio';
-    document.getElementById('reply-preview').textContent = `Replying to ${repliedUsername}: ${repliedText}`;
-    document.getElementById('reply-container').style.display = 'flex';
-    document.getElementById('message-input').focus();
+    document.getElementById('reply-preview').textContent = `Replying to ${repliedMsg.querySelector('.username').textContent}: ${repliedMsg.querySelector('.message-content span')?.textContent || 'Media'}`;
+    document.getElementById('reply-container').classList.remove('hidden');
 }
 
-function cancelReply() {
-    replyingTo = null;
-    document.getElementById('reply-container').style.display = 'none';
-}
+function cancelReply() { replyingTo = null; document.getElementById('reply-container').classList.add('hidden'); }
 
 function startDM(recipientId, recipientUsername) {
-    if (!dmTabs[recipientId]) createDMTab(recipientId, recipientUsername);
-    switchTab(`dm-${recipientId}`);
-}
-
-function createDMTab(recipientId, recipientUsername) {
-    const tabs = document.getElementById('tabs');
-    const tabBtn = document.createElement('button');
-    tabBtn.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-lg mr-2';
-    tabBtn.setAttribute('data-tab', `dm-${recipientId}`);
-    tabBtn.textContent = `DM: ${recipientUsername}`;
-    tabBtn.onclick = () => switchTab(`dm-${recipientId}`);
-    tabs.appendChild(tabBtn);
-
-    const dmTab = document.createElement('div');
-    dmTab.id = `dm-${recipientId}`;
-    dmTab.className = 'chat-area flex-1 bg-white rounded-lg p-4 overflow-y-auto hidden shadow-md';
-    dmTab.innerHTML = `<div class="chat-content flex flex-col gap-4"></div>`;
-    document.getElementById('dm-tabs').appendChild(dmTab);
-
-    dmTabs[recipientId] = { chat: dmTab.querySelector('.chat-content'), button: tabBtn };
-    loadMessages(`dm-${recipientId}`);
-}
-
-function switchTab(tabId) {
-    document.querySelectorAll('#tabs button').forEach(btn => btn.classList.remove('active-tab'));
-    document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
-    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active-tab');
-    document.getElementById(tabId === 'General' ? 'chat-area' : tabId).classList.add('active');
-    activeTab = tabId;
-    const input = document.getElementById('message-input');
-    input.dataset.recipient = tabId.startsWith('dm-') ? tabId.replace('dm-', '') : '';
-    input.placeholder = tabId.startsWith('dm-') ? `DM to ${getRecipientUsername(input.dataset.recipient)}...` : `Message #${activeTab}...`;
-    if (!tabId.startsWith('dm-')) {
-        document.querySelectorAll('#channel-list button').forEach(btn => btn.classList.remove('bg-green-500'));
-        document.querySelector(`[data-channel="${tabId}"]`).classList.add('bg-green-500');
-        loadMessages(tabId);
+    if (!dmTabs[recipientId]) {
+        dmTabs[recipientId] = { chat: document.createElement('div'), title: recipientUsername };
+        dmTabs[recipientId].chat.className = 'chat-content';
+        const li = document.createElement('li');
+        li.innerHTML = `<button class="w-full text-left px-2 py-1 bg-gray-200 rounded hover:bg-blue-100" data-dm="${recipientId}" onclick="switchTab('${recipientId}', 'dm')">${recipientUsername}</button>`;
+        document.getElementById('dm-list').appendChild(li);
     }
+    switchTab(recipientId, 'dm');
 }
 
-function switchChannel(channel) {
-    document.querySelectorAll('#channel-list button').forEach(btn => btn.classList.remove('bg-green-500'));
-    document.querySelector(`[data-channel="${channel}"]`).classList.add('bg-green-500');
-    activeTab = channel;
-    document.querySelectorAll('.chat-area').forEach(area => area.classList.remove('active'));
-    document.getElementById('chat-area').classList.add('active');
-    document.getElementById('message-input').dataset.recipient = '';
-    document.getElementById('message-input').placeholder = `Message #${channel}...`;
-    socket.emit('join channel', channel);
-    loadMessages(channel);
-    document.querySelectorAll('#tabs button').forEach(btn => btn.classList.remove('active-tab'));
-    const existingTab = document.querySelector(`[data-tab="${channel}"]`);
-    if (existingTab) {
-        existingTab.classList.add('active-tab');
-    } else {
-        const tabs = document.getElementById('tabs');
-        const tabBtn = document.createElement('button');
-        tabBtn.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-lg mr-2 active-tab';
-        tabBtn.setAttribute('data-tab', channel);
-        tabBtn.textContent = `# ${channel}`;
-        tabBtn.onclick = () => switchTab(channel);
-        tabs.innerHTML = '';
-        tabs.appendChild(tabBtn);
-    }
+function createGroup() {
+    const name = document.getElementById('group-name').value.trim();
+    const memberIds = Array.from(document.getElementById('group-members').selectedOptions).map(opt => opt.value);
+    if (!name || memberIds.length === 0) return alert('Please enter a group name and select members.');
+    fetch('/create-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, memberIds }),
+        credentials: 'include'
+    }).then(res => res.json()).then(data => {
+        if (data.success) {
+            socket.emit('join group', data.groupId);
+            document.getElementById('group-name').value = '';
+            document.getElementById('group-members').selectedIndex = -1;
+        }
+    });
+}
+
+function switchTab(tabId, type = 'channel') {
+    activeTab = type === 'channel' ? tabId : type === 'group' ? `group-${tabId}` : `dm-${tabId}`;
+    document.querySelectorAll('#sidebar button').forEach(btn => btn.classList.remove('bg-blue-200'));
+    document.querySelector(`[data-${type}="${tabId}"]`)?.classList.add('bg-blue-200');
+    document.getElementById('chat-title').textContent = type === 'channel' ? `#${tabId}` : type === 'group' ? (groupTabs[tabId]?.title || 'Group') : dmTabs[tabId]?.title || 'DM';
+    document.getElementById('chat-area').innerHTML = '<div class="chat-content"></div>';
+    fetchMessages(activeTab);
+    socket.emit(type === 'channel' ? 'join channel' : 'join group', type === 'channel' ? tabId : tabId);
 }
 
 function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text) return;
-    const msg = { 
-        username, 
-        text, 
-        color: userColor, 
-        language: userLanguage, 
-        senderId: userId, 
-        profilePicture,
-    };
-    if (replyingTo) {
-        msg.replyTo = replyingTo;
-        replyingTo = null;
-        document.getElementById('reply-container').style.display = 'none';
-    }
-    if (input.dataset.recipient) {
-        msg.recipientId = input.dataset.recipient;
+    const msg = { username, text, color: userColor, language: userLanguage, senderId: userId, profilePicture };
+    if (replyingTo) { msg.replyTo = replyingTo; cancelReply(); }
+    if (activeTab.startsWith('dm-')) {
+        msg.recipientId = activeTab.replace('dm-', '');
         socket.emit('dm message', msg);
+    } else if (activeTab.startsWith('group-')) {
+        msg.groupId = activeTab.replace('group-', '');
+        socket.emit('group message', msg);
     } else {
         msg.channel = activeTab;
         socket.emit('chat message', msg);
     }
     input.value = '';
-    socket.emit('stop typing', { channel: activeTab });
 }
 
 function sendImage() {
-    const fileInput = document.getElementById('image-input');
-    const file = fileInput.files[0];
+    const file = document.getElementById('image-input').files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
-        const msg = { 
-            username, 
-            image: reader.result,
-            color: userColor, 
-            senderId: userId, 
-            profilePicture,
-        };
-        if (replyingTo) {
-            msg.replyTo = replyingTo;
-            replyingTo = null;
-            document.getElementById('reply-container').style.display = 'none';
-        }
-        if (document.getElementById('message-input').dataset.recipient) {
-            msg.recipientId = document.getElementById('message-input').dataset.recipient;
-            socket.emit('image message', msg);
-        } else {
-            msg.channel = activeTab;
-            socket.emit('image message', msg);
-        }
-        fileInput.value = '';
+        const msg = { username, image: reader.result, color: userColor, senderId: userId, profilePicture };
+        if (replyingTo) { msg.replyTo = replyingTo; cancelReply(); }
+        if (activeTab.startsWith('dm-')) msg.recipientId = activeTab.replace('dm-', '');
+        else if (activeTab.startsWith('group-')) msg.groupId = activeTab.replace('group-', '');
+        else msg.channel = activeTab;
+        socket.emit(`${msg.recipientId ? 'dm' : msg.groupId ? 'group' : 'chat'} image message`, msg);
+        document.getElementById('image-input').value = '';
     };
     reader.readAsDataURL(file);
 }
 
 async function startRecording() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-        mediaRecorder.onstop = sendAudioMessage;
-        mediaRecorder.start();
-        document.getElementById('record-btn').innerHTML = '<i class="fas fa-stop"></i>';
-        document.getElementById('record-btn').onclick = stopRecording;
-    } catch (e) {
-        console.error('Error starting recording:', e);
-        alert('Failed to access microphone. Please allow permissions.');
-    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = sendAudioMessage;
+    mediaRecorder.start();
+    document.getElementById('record-btn').innerHTML = '<i class="fas fa-stop"></i>';
+    document.getElementById('record-btn').onclick = stopRecording;
 }
 
 function stopRecording() {
@@ -521,89 +331,68 @@ function sendAudioMessage() {
     const blob = new Blob(audioChunks, { type: 'audio/webm' });
     const reader = new FileReader();
     reader.onload = () => {
-        const msg = { 
-            username, 
-            audio: reader.result,
-            color: userColor, 
-            senderId: userId, 
-            profilePicture,
-        };
-        if (replyingTo) {
-            msg.replyTo = replyingTo;
-            replyingTo = null;
-            document.getElementById('reply-container').style.display = 'none';
-        }
-        if (document.getElementById('message-input').dataset.recipient) {
-            msg.recipientId = document.getElementById('message-input').dataset.recipient;
-            socket.emit('audio message', msg);
-        } else {
-            msg.channel = activeTab;
-            socket.emit('audio message', msg);
-        }
+        const msg = { username, audio: reader.result, color: userColor, senderId: userId, profilePicture };
+        if (replyingTo) { msg.replyTo = replyingTo; cancelReply(); }
+        if (activeTab.startsWith('dm-')) msg.recipientId = activeTab.replace('dm-', '');
+        else if (activeTab.startsWith('group-')) msg.groupId = activeTab.replace('group-', '');
+        else msg.channel = activeTab;
+        socket.emit(`${msg.recipientId ? 'dm' : msg.groupId ? 'group' : 'chat'} audio message`, msg);
     };
     reader.readAsDataURL(blob);
 }
 
 function handleTyping() {
-    socket.emit('typing', { username, channel: activeTab });
+    const data = { username, senderId: userId };
+    if (activeTab.startsWith('dm-')) data.recipientId = activeTab.replace('dm-', '');
+    else if (activeTab.startsWith('group-')) data.groupId = activeTab.replace('group-', '');
+    else data.channel = activeTab;
+    socket.emit('typing', data);
     clearTimeout(window.typingTimeout);
-    window.typingTimeout = setTimeout(() => socket.emit('stop typing', { channel: activeTab }), 1000);
+    window.typingTimeout = setTimeout(() => socket.emit('stop typing', data), 1000);
 }
 
-function showColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'flex';
-    document.getElementById('color-picker').value = userColor;
+function toggleTheme() {
+    isDarkMode = !isDarkMode;
+    document.body.classList.toggle('dark', isDarkMode);
 }
 
-function hideColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'none';
+function updateSidebar() {
+    const users = Array.from(document.querySelectorAll('#user-list li')).map(li => ({ id: li.querySelector('span').onclick.toString().match(/'([^']+)'/)[1], username: li.querySelector('span').textContent }));
+    document.getElementById('dm-list').innerHTML = users.map(u => `
+        <li><button class="w-full text-left px-2 py-1 bg-gray-200 rounded hover:bg-blue-100" data-dm="${u.id}" onclick="switchTab('${u.id}', 'dm')">${u.username}</button></li>
+    `).join('');
 }
 
-function changeColor() {
-    const newColor = document.getElementById('color-picker').value;
-    fetch('/change-color', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ color: newColor }),
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            userColor = newColor;
-            hideColorPicker();
-        }
+function getUsernameFromId(id) {
+    return Array.from(document.querySelectorAll('#user-list li')).find(li => li.querySelector('span').onclick.toString().includes(id))?.querySelector('span').textContent || 'Unknown';
+}
+
+function updateUnreadBadges() {
+    document.getElementById('unread-count').classList.toggle('hidden', !unreadCounts[activeTab]);
+    document.getElementById('unread-count').textContent = unreadCounts[activeTab] || '';
+    document.querySelectorAll('#channel-list button, #group-list button, #dm-list button').forEach(btn => {
+        const id = btn.getAttribute(`data-${btn.closest('ul').id.includes('channel') ? 'channel' : btn.closest('ul').id.includes('group') ? 'group' : 'dm'}`);
+        const badge = document.createElement('span');
+        badge.className = 'bg-orange-500 text-white px-1 py-0.5 rounded-full text-xs ml-2';
+        badge.textContent = unreadCounts[id] || '';
+        btn.querySelector('span.badge')?.remove();
+        if (unreadCounts[id]) btn.appendChild(badge.cloneNode(true));
     });
 }
 
-function updateLanguage() {
-    userLanguage = document.getElementById('language-select').value;
-    fetch('/update-language', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: userLanguage }),
-        credentials: 'include'
-    });
-}
+function playNotification() { if (!isMuted) document.getElementById('notification-sound').play(); }
 
-function getRecipientUsername(id) {
-    const user = Array.from(document.querySelectorAll('#user-list li')).find(li => li.onclick.toString().includes(id));
-    return user ? user.textContent.split(' ')[0] : 'Unknown';
-}
-
-function toggleMute() {
-    isMuted = !isMuted;
-    document.getElementById('mute-btn').textContent = `Toggle Mute (${isMuted ? 'Muted' : 'Unmuted'})`;
-}
-
-function playNotification() {
-    if (!isMuted) document.getElementById('notification-sound').play();
-}
-
-function openFullImage(src) {
+function openImage(src) {
     const win = window.open('');
     win.document.write(`<img src="${src}" style="max-width: 100%; max-height: 100vh;">`);
 }
 
 function toggleEmojiPicker() {
-    const picker = document.getElementById('emoji-picker-container');
-    picker.classList.toggle('hidden');
+    document.getElementById('emoji-picker-container').classList.toggle('hidden');
+}
+
+async function translate(text, fromLang) {
+    const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${fromLang}|${userLanguage}`);
+    const data = await response.json();
+    return data.responseData.translatedText + (fromLang !== userLanguage ? ` (${fromLang}: ${text})` : '');
 }
