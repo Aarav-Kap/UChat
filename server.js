@@ -15,10 +15,9 @@ mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    color: { type: String, default: '#0A2463' },
+    color: { type: String, default: '#1E90FF' },
     language: { type: String, default: 'en' },
     profilePicture: { type: String, default: '' },
-    theme: { type: String, default: 'light' },
 });
 const User = mongoose.model('User', userSchema);
 
@@ -40,6 +39,7 @@ const messageSchema = new mongoose.Schema({
     profilePicture: { type: String },
     timestamp: { type: Date, default: Date.now },
     reactions: { type: Map, of: [String], default: {} },
+    pinned: { type: Boolean, default: false },
 });
 const Message = mongoose.model('Message', messageSchema);
 
@@ -102,7 +102,7 @@ app.post('/register', async (req, res) => {
 app.get('/user', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const user = await User.findById(req.session.userId);
-    res.json({ username: user.username, color: user.color, language: user.language, userId: user._id.toString(), profilePicture: user.profilePicture, theme: user.theme });
+    res.json({ username: user.username, color: user.color, language: user.language, userId: user._id.toString(), profilePicture: user.profilePicture });
 });
 
 app.post('/change-color', async (req, res) => {
@@ -129,14 +129,6 @@ app.post('/update-profile-picture', async (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/update-theme', async (req, res) => {
-    const { theme } = req.body;
-    const user = await User.findById(req.session.userId);
-    user.theme = theme;
-    await user.save();
-    res.json({ success: true });
-});
-
 app.post('/create-group', async (req, res) => {
     const { name, memberIds } = req.body;
     const group = new Group({ name, members: [req.session.userId, ...memberIds] });
@@ -145,24 +137,20 @@ app.post('/create-group', async (req, res) => {
 });
 
 app.get('/messages', async (req, res) => {
-    const { channel, groupId, recipientId, date } = req.query;
+    const { channel, groupId, recipientId } = req.query;
     const query = channel ? { channel } : groupId ? { groupId } : recipientId ? {
         $or: [{ senderId: req.session.userId, recipientId }, { senderId: recipientId, recipientId: req.session.userId }]
     } : {};
-    if (date) {
-        const start = new Date(date);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(date);
-        end.setHours(23, 59, 59, 999);
-        query.timestamp = { $gte: start, $lte: end };
-    }
-    const messages = await Message.find(query).sort({ timestamp: 1 }).limit(200);
+    const messages = await Message.find(query).sort({ timestamp: 1, pinned: -1 }).limit(200);
     res.json(messages);
 });
 
-app.get('/groups', async (req, res) => {
-    const groups = await Group.find({ members: req.session.userId });
-    res.json(groups);
+app.post('/pin-message', async (req, res) => {
+    const { messageId } = req.body;
+    const message = await Message.findById(messageId);
+    message.pinned = !message.pinned;
+    await message.save();
+    res.json({ success: true });
 });
 
 app.post('/react-message', async (req, res) => {
@@ -250,6 +238,14 @@ io.on('connection', async (socket) => {
         await message.save();
         const target = message.recipientId ? `dm-${message.recipientId}` : message.groupId ? message.groupId : message.channel;
         io.to(target).emit('reaction update', { messageId: data.messageId, reaction: data.reaction, users: userReactions });
+    });
+
+    socket.on('pin', async (data) => {
+        const message = await Message.findById(data.messageId);
+        message.pinned = !message.pinned;
+        await message.save();
+        const target = message.recipientId ? `dm-${message.recipientId}` : message.groupId ? message.groupId : message.channel;
+        io.to(target).emit('pin update', { messageId: data.messageId, pinned: message.pinned });
     });
 
     socket.on('typing', (data) => {

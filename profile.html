@@ -5,22 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UChat - Profile</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
 </head>
-<body class="bg-gray-50 flex items-center justify-center min-h-screen transition-colors duration-300">
-    <div class="bg-white p-8 rounded-lg shadow-lg text-center">
-        <h2 class="text-2xl font-bold text-navy-900 mb-6 flex items-center justify-center">
-            <svg class="w-6 h-6 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2v20m-8-4h16"></path>
-                <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
-            </svg>
-            UChat Profile
-        </h2>
+<body class="bg-gradient-to-br from-teal-400 to-purple-500 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-md p-6 bg-white rounded-lg shadow-md">
+        <h2 class="text-2xl font-bold text-teal-600 text-center mb-6">Your Profile</h2>
         <div class="flex flex-col items-center space-y-4">
-            <img id="profile-picture" src="" alt="Profile Picture" class="w-32 h-32 rounded-full border-2 border-navy-900">
-            <h3 id="profile-username" class="text-xl font-semibold text-navy-900"></h3>
+            <img id="profile-picture" src="" alt="Profile Picture" class="w-32 h-32 rounded-full border-2 border-teal-600">
+            <h3 id="profile-username" class="text-xl font-semibold text-teal-600"></h3>
             <input type="file" id="profile-picture-input" accept="image/*" class="hidden">
-            <button onclick="document.getElementById('profile-picture-input').click()" class="bg-navy-900 text-white px-4 py-2 rounded-lg hover:bg-navy-800">Change Picture</button>
+            <button onclick="document.getElementById('profile-picture-input').click()" class="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-purple-500">Change Picture</button>
             <button onclick="window.location.href='/app'" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600">Back to Chat</button>
         </div>
     </div>
@@ -32,7 +27,6 @@
             const data = await response.json();
             document.getElementById('profile-username').textContent = data.username;
             document.getElementById('profile-picture').src = data.profilePicture || 'https://via.placeholder.com/150';
-            document.body.classList.add(data.theme === 'dark' ? 'dark-mode' : 'light-mode');
         });
 
         document.getElementById('profile-picture-input').addEventListener('change', async () => {
