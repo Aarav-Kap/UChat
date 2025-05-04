@@ -1,5 +1,5 @@
 const socket = io('http://localhost:10000', { withCredentials: true, transports: ['websocket', 'polling'] });
-let username, userColor, userLanguage, userId, profilePicture, activeTab = 'General', dmTabs = {}, groupTabs = {}, replyingTo = null, currentCallRecipient = null, isCalling = false;
+let username, userColor, userLanguage, userId, profilePicture, activeTab = 'Main Hall', dmTabs = {}, groupTabs = {}, replyingTo = null, currentCallRecipient = null, isCalling = false, groupCall = null;
 let localStream, remoteStream, peerConnection, mediaRecorder, audioChunks = [];
 const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }] };
 
@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!response.ok) return window.location.href = '/';
     const data = await response.json();
     username = data.username; userColor = data.color; userLanguage = data.language; userId = data.userId; profilePicture = data.profilePicture;
-    document.getElementById('language-select').value = userLanguage;
     loadInitialContent();
     socket.emit('join channel', activeTab);
 });
@@ -72,29 +71,19 @@ socket.on('audio message', msg => {
 });
 
 socket.on('typing', data => {
-    if (activeTab === data.channel || activeTab === data.groupId || activeTab === `dm-${data.recipientId}`) document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
-});
-
-socket.on('stop typing', data => {
-    if (activeTab === data.channel || activeTab === data.groupId || activeTab === `dm-${data.recipientId}`) document.getElementById('typing-indicator').textContent = '';
-});
-
-socket.on('reaction update', data => {
-    const messageEl = document.querySelector(`[data-message-id="${data.messageId}"]`);
-    if (messageEl) {
-        const reactionsEl = messageEl.querySelector('.reactions');
-        reactionsEl.innerHTML = Object.entries(data.reactions).map(([reaction, users]) => `
-            <span class="reaction" onclick="toggleReaction('${data.messageId}', '${reaction}')">${reaction} ${users.length}</span>
-        `).join('');
+    if (activeTab === data.channel || activeTab === data.groupId || (data.recipientId && activeTab === `dm-${data.recipientId}`)) {
+        document.getElementById('typing-indicator').textContent = `${data.username} is typing...`;
     }
 });
 
-socket.on('pin update', data => {
-    fetchMessages(activeTab);
+socket.on('stop typing', data => {
+    if (activeTab === data.channel || activeTab === data.groupId || (data.recipientId && activeTab === `dm-${data.recipientId}`)) {
+        document.getElementById('typing-indicator').textContent = '';
+    }
 });
 
 socket.on('call-made', async data => {
-    if (isCalling) { socket.emit('call-rejected', { to: data.from }); return; }
+    if (isCalling || groupCall) { socket.emit('call-rejected', { to: data.from }); return; }
     currentCallRecipient = data.from;
     document.getElementById('call-status').textContent = `Incoming call from ${data.from}...`;
     document.getElementById('call-modal').style.display = 'flex';
@@ -115,6 +104,30 @@ socket.on('ice-candidate', async data => {
 socket.on('call-rejected', () => { alert('Call declined.'); endCall(); });
 socket.on('hang-up', () => endCall());
 
+socket.on('group-call-made', async data => {
+    if (isCalling || groupCall) { socket.emit('group-call-rejected', { to: data.from, groupId: data.groupId }); return; }
+    groupCall = { groupId: data.groupId, peers: {} };
+    document.getElementById('call-status').textContent = `Incoming group call from ${data.from}...`;
+    document.getElementById('call-modal').style.display = 'flex';
+    document.getElementById('accept-call').onclick = async () => { await acceptGroupCall(data); };
+    document.getElementById('decline-call').onclick = () => { socket.emit('group-call-rejected', { to: data.from, groupId: data.groupId }); document.getElementById('call-modal').style.display = 'none'; };
+});
+
+socket.on('group-answer-made', async data => {
+    const peer = groupCall.peers[data.to];
+    if (peer) await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+    document.getElementById('call-interface').style.display = 'block';
+    document.getElementById('call-with').textContent = `In group call for group ${groupCall.groupId}`;
+});
+
+socket.on('group ice-candidate', async data => {
+    const peer = groupCall.peers[data.to];
+    if (peer && data.candidate) await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+});
+
+socket.on('group-call-rejected', data => { alert('Group call declined by a member.'); endGroupCall(); });
+socket.on('group-hang-up', data => endGroupCall());
+
 async function acceptCall(data) {
     document.getElementById('call-modal').style.display = 'none';
     isCalling = true;
@@ -127,7 +140,7 @@ async function acceptCall(data) {
 }
 
 async function callUser(recipientId) {
-    if (isCalling) { alert('Already in a call.'); return; }
+    if (isCalling || groupCall) { alert('Already in a call.'); return; }
     currentCallRecipient = recipientId; isCalling = true;
     await setupPeerConnection(recipientId);
     const offer = await peerConnection.createOffer();
@@ -146,6 +159,50 @@ async function setupPeerConnection(recipientId) {
     peerConnection.oniceconnectionstatechange = () => { if (peerConnection.iceConnectionState === 'disconnected') endCall(); };
 }
 
+async function startGroupCall() {
+    if (isCalling || groupCall) { alert('Already in a call.'); return; }
+    const groupId = activeTab;
+    const members = Array.from(document.querySelectorAll('#group-members option')).map(opt => opt.value);
+    if (!members.length) return alert('No members to call.');
+    groupCall = { groupId, peers: {} };
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    remoteStream = new MediaStream();
+    document.getElementById('remote-audio').srcObject = remoteStream;
+    for (const memberId of members) {
+        const peer = new RTCPeerConnection(configuration);
+        localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+        peer.ontrack = event => remoteStream.addTrack(event.track);
+        peer.onicecandidate = event => event.candidate && socket.emit('group ice-candidate', { candidate: event.candidate, to: memberId, groupId });
+        peer.oniceconnectionstatechange = () => { if (peer.iceConnectionState === 'disconnected') endGroupCall(); };
+        groupCall.peers[memberId] = peer;
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socket.emit('group-call', { offer, members, groupId });
+    }
+    document.getElementById('call-interface').style.display = 'block';
+    document.getElementById('call-with').textContent = `In group call for group ${groupId}`;
+}
+
+async function acceptGroupCall(data) {
+    document.getElementById('call-modal').style.display = 'none';
+    groupCall = { groupId: data.groupId, peers: {} };
+    const peer = new RTCPeerConnection(configuration);
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+    remoteStream = new MediaStream();
+    document.getElementById('remote-audio').srcObject = remoteStream;
+    peer.ontrack = event => remoteStream.addTrack(event.track);
+    peer.onicecandidate = event => event.candidate && socket.emit('group ice-candidate', { candidate: event.candidate, to: data.from, groupId: data.groupId });
+    peer.oniceconnectionstatechange = () => { if (peer.iceConnectionState === 'disconnected') endGroupCall(); };
+    groupCall.peers[data.from] = peer;
+    await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+    socket.emit('group-answer', { answer, to: data.from, groupId: data.groupId });
+    document.getElementById('call-interface').style.display = 'block';
+    document.getElementById('call-with').textContent = `In group call for group ${data.groupId}`;
+}
+
 function endCall() {
     if (peerConnection) peerConnection.close();
     if (localStream) localStream.getTracks().forEach(track => track.stop());
@@ -156,18 +213,32 @@ function endCall() {
     document.getElementById('remote-audio').srcObject = null;
 }
 
-function hangUp() { if (currentCallRecipient) socket.emit('hang-up', { to: currentCallRecipient }); endCall(); }
+function endGroupCall() {
+    if (groupCall) {
+        Object.values(groupCall.peers).forEach(peer => peer.close());
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
+        if (remoteStream) remoteStream.getTracks().forEach(track => track.stop());
+        Object.keys(groupCall.peers).forEach(memberId => socket.emit('group-hang-up', { to: memberId, groupId: groupCall.groupId }));
+        groupCall = null;
+        localStream = null; remoteStream = null;
+        document.getElementById('call-interface').style.display = 'none';
+        document.getElementById('remote-audio').srcObject = null;
+    }
+}
+
+function hangUp() {
+    if (currentCallRecipient) socket.emit('hang-up', { to: currentCallRecipient });
+    else if (groupCall) endGroupCall();
+    endCall();
+}
 
 async function fetchMessages(tab) {
     const messages = document.getElementById('messages');
-    const pinned = document.getElementById('pinned-messages');
     messages.innerHTML = '';
-    pinned.innerHTML = '';
     const params = tab.startsWith('dm-') ? `recipientId=${tab.replace('dm-', '')}` : tab.startsWith('group-') ? `groupId=${tab.replace('group-', '')}` : `channel=${tab}`;
     const response = await fetch(`/messages?${params}`, { credentials: 'include' });
     const data = await response.json();
-    data.filter(m => m.pinned).forEach(msg => appendPinnedMessage(msg, pinned));
-    data.filter(m => !m.pinned).forEach(msg => {
+    data.forEach(msg => {
         if (msg.type === 'text') appendMessage(msg, messages);
         else if (msg.type === 'image') appendImageMessage(msg, messages);
         else if (msg.type === 'audio') appendAudioMessage(msg, messages);
@@ -182,7 +253,7 @@ function appendMessage(msg, container) {
     let content = `
         <div class="flex items-center space-x-2">
             <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+            <span class="username" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
     if (msg.replyTo) {
@@ -196,38 +267,12 @@ function appendMessage(msg, container) {
             <div class="actions">
                 <button onclick="translateMessage('${msg._id}', '${msg.content}')">Translate</button>
                 <button onclick="startReply('${msg._id}')">Reply</button>
-                <button onclick="togglePin('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button>
-                <button onclick="toggleReaction('${msg._id}', '👍')">👍</button>
-                <button onclick="toggleReaction('${msg._id}', '❤️')">❤️</button>
-            </div>
-            <div class="reactions">
-                ${Object.entries(msg.reactions).map(([reaction, users]) => `<span class="reaction" onclick="toggleReaction('${msg._id}', '${reaction}')">${reaction} ${users.length}</span>`).join('')}
             </div>
         </div>
     `;
     div.innerHTML = content;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
-}
-
-function appendPinnedMessage(msg, container) {
-    const div = document.createElement('div');
-    div.className = 'pinned';
-    div.dataset.messageId = msg._id;
-    let content = `
-        <div class="flex items-center space-x-2">
-            <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
-        </div>
-        <div class="message-content">
-            <div class="message-body"><span>${msg.content}</span></div>
-            <div class="actions">
-                <button onclick="togglePin('${msg._id}')">Unpin</button>
-            </div>
-        </div>
-    `;
-    div.innerHTML = content;
-    container.appendChild(div);
 }
 
 function appendImageMessage(msg, container) {
@@ -237,7 +282,7 @@ function appendImageMessage(msg, container) {
     let content = `
         <div class="flex items-center space-x-2">
             <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+            <span class="username" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
     if (msg.replyTo) {
@@ -250,12 +295,6 @@ function appendImageMessage(msg, container) {
             <div class="message-body"><img src="${msg.content}" alt="Image" class="chat-image" onclick="openImage('${msg.content}')"></div>
             <div class="actions">
                 <button onclick="startReply('${msg._id}')">Reply</button>
-                <button onclick="togglePin('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button>
-                <button onclick="toggleReaction('${msg._id}', '👍')">👍</button>
-                <button onclick="toggleReaction('${msg._id}', '❤️')">❤️</button>
-            </div>
-            <div class="reactions">
-                ${Object.entries(msg.reactions).map(([reaction, users]) => `<span class="reaction" onclick="toggleReaction('${msg._id}', '${reaction}')">${reaction} ${users.length}</span>`).join('')}
             </div>
         </div>
     `;
@@ -271,7 +310,7 @@ function appendAudioMessage(msg, container) {
     let content = `
         <div class="flex items-center space-x-2">
             <img src="${msg.profilePicture || 'https://via.placeholder.com/24'}" alt="${msg.username}" class="w-6 h-6 rounded-full">
-            <span class="username">${msg.username === username ? 'You' : msg.username}</span>
+            <span class="username" style="color: ${msg.color || userColor}">${msg.username === username ? 'You' : msg.username}</span>
         </div>
     `;
     if (msg.replyTo) {
@@ -284,12 +323,6 @@ function appendAudioMessage(msg, container) {
             <div class="message-body"><audio controls src="${msg.content}"></audio></div>
             <div class="actions">
                 <button onclick="startReply('${msg._id}')">Reply</button>
-                <button onclick="togglePin('${msg._id}')">${msg.pinned ? 'Unpin' : 'Pin'}</button>
-                <button onclick="toggleReaction('${msg._id}', '👍')">👍</button>
-                <button onclick="toggleReaction('${msg._id}', '❤️')">❤️</button>
-            </div>
-            <div class="reactions">
-                ${Object.entries(msg.reactions).map(([reaction, users]) => `<span class="reaction" onclick="toggleReaction('${msg._id}', '${reaction}')">${reaction} ${users.length}</span>`).join('')}
             </div>
         </div>
     `;
@@ -317,26 +350,6 @@ function startReply(messageId) {
 function cancelReply() {
     replyingTo = null;
     document.getElementById('reply-container').style.display = 'none';
-}
-
-async function toggleReaction(messageId, reaction) {
-    await fetch('/react-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageId, reaction }),
-        credentials: 'include'
-    });
-    socket.emit('reaction', { messageId, reaction, userId });
-}
-
-async function togglePin(messageId) {
-    await fetch('/pin-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageId }),
-        credentials: 'include'
-    });
-    socket.emit('pin', { messageId, userId });
 }
 
 function startDM(recipientId, recipientUsername) {
@@ -373,56 +386,18 @@ function createGroup() {
 function switchTab(tabId, type = 'channel') {
     activeTab = type === 'channel' ? tabId : type === 'group' ? `group-${tabId}` : `dm-${tabId}`;
     document.getElementById('chat-title').textContent = type === 'channel' ? `#${tabId}` : type === 'group' ? (groupTabs[tabId]?.title || 'Group') : dmTabs[tabId]?.title || 'DM';
+    document.getElementById('group-call-btn').style.display = type === 'group' ? 'block' : 'none';
     fetchMessages(activeTab);
     if (type === 'channel') socket.emit('join channel', tabId);
     else if (type === 'group') socket.emit('join group', tabId);
     else if (type === 'dm') socket.emit('join dm', tabId);
 }
 
-function showSettings() {
-    document.getElementById('settings-modal').style.display = 'flex';
-}
-
-function hideSettings() {
-    document.getElementById('settings-modal').style.display = 'none';
-}
-
-function showColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'flex';
-    document.getElementById('color-picker').value = userColor;
-}
-
-function hideColorPicker() {
-    document.getElementById('color-picker-modal').style.display = 'none';
-}
-
-function changeColor() {
-    const newColor = document.getElementById('color-picker').value;
-    fetch('/change-color', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ color: newColor }),
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) { userColor = newColor; hideColorPicker(); }
-    });
-}
-
-function updateLanguage() {
-    userLanguage = document.getElementById('language-select').value;
-    fetch('/update-language', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: userLanguage }),
-        credentials: 'include'
-    });
-}
-
 function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text) return;
-    const msg = { username, text, senderId: userId, profilePicture };
+    const msg = { username, text, senderId: userId, profilePicture, color: userColor };
     if (replyingTo) { msg.replyTo = replyingTo; cancelReply(); }
     if (activeTab.startsWith('dm-')) {
         msg.recipientId = activeTab.replace('dm-', '');
@@ -435,7 +410,7 @@ function sendMessage() {
         socket.emit('chat message', msg);
     }
     input.value = '';
-    socket.emit('stop typing', { channel: activeTab });
+    socket.emit('stop typing', { channel: activeTab, groupId: activeTab.startsWith('group-') ? activeTab.replace('group-', '') : null, recipientId: activeTab.startsWith('dm-') ? activeTab.replace('dm-', '') : null, senderId: userId });
 }
 
 function sendImage() {
@@ -443,7 +418,7 @@ function sendImage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-        const msg = { username, image: reader.result, senderId: userId, profilePicture };
+        const msg = { username, image: reader.result, senderId: userId, profilePicture, color: userColor };
         if (replyingTo) { msg.replyTo = replyingTo; cancelReply(); }
         if (activeTab.startsWith('dm-')) msg.recipientId = activeTab.replace('dm-', '');
         else if (activeTab.startsWith('group-')) msg.groupId = activeTab.replace('group-', '');
@@ -481,7 +456,7 @@ function sendAudioMessage() {
     const blob = new Blob(audioChunks, { type: 'audio/webm' });
     const reader = new FileReader();
     reader.onload = () => {
-        const msg = { username, audio: reader.result, senderId: userId, profilePicture };
+        const msg = { username, audio: reader.result, senderId: userId, profilePicture, color: userColor };
         if (replyingTo) { msg.replyTo = replyingTo; cancelReply(); }
         if (activeTab.startsWith('dm-')) msg.recipientId = activeTab.replace('dm-', '');
         else if (activeTab.startsWith('group-')) msg.groupId = activeTab.replace('group-', '');

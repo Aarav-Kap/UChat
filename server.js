@@ -15,6 +15,7 @@ mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+    bio: { type: String, default: '' },
     color: { type: String, default: '#1E90FF' },
     language: { type: String, default: 'en' },
     profilePicture: { type: String, default: '' },
@@ -38,8 +39,6 @@ const messageSchema = new mongoose.Schema({
     replyTo: { type: String },
     profilePicture: { type: String },
     timestamp: { type: Date, default: Date.now },
-    reactions: { type: Map, of: [String], default: {} },
-    pinned: { type: Boolean, default: false },
 });
 const Message = mongoose.model('Message', messageSchema);
 
@@ -50,7 +49,7 @@ const store = new MongoDBStore({
 store.on('error', err => console.error('Session error:', err));
 
 const sessionMiddleware = session({
-    secret: 'UChatSecret2025',
+    secret: 'SchoolChatSecret2025',
     resave: false,
     saveUninitialized: false,
     store: store,
@@ -102,29 +101,16 @@ app.post('/register', async (req, res) => {
 app.get('/user', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const user = await User.findById(req.session.userId);
-    res.json({ username: user.username, color: user.color, language: user.language, userId: user._id.toString(), profilePicture: user.profilePicture });
+    res.json({ username: user.username, bio: user.bio, color: user.color, language: user.language, userId: user._id.toString(), profilePicture: user.profilePicture });
 });
 
-app.post('/change-color', async (req, res) => {
-    const { color } = req.body;
+app.post('/update-profile', async (req, res) => {
+    const { bio, profilePicture, color, language } = req.body;
     const user = await User.findById(req.session.userId);
-    user.color = color;
-    await user.save();
-    res.json({ success: true });
-});
-
-app.post('/update-language', async (req, res) => {
-    const { language } = req.body;
-    const user = await User.findById(req.session.userId);
-    user.language = language;
-    await user.save();
-    res.json({ success: true });
-});
-
-app.post('/update-profile-picture', async (req, res) => {
-    const { profilePicture } = req.body;
-    const user = await User.findById(req.session.userId);
-    user.profilePicture = profilePicture;
+    if (bio !== undefined) user.bio = bio;
+    if (profilePicture) user.profilePicture = profilePicture;
+    if (color) user.color = color;
+    if (language) user.language = language;
     await user.save();
     res.json({ success: true });
 });
@@ -141,29 +127,8 @@ app.get('/messages', async (req, res) => {
     const query = channel ? { channel } : groupId ? { groupId } : recipientId ? {
         $or: [{ senderId: req.session.userId, recipientId }, { senderId: recipientId, recipientId: req.session.userId }]
     } : {};
-    const messages = await Message.find(query).sort({ timestamp: 1, pinned: -1 }).limit(200);
+    const messages = await Message.find(query).sort({ timestamp: 1 }).limit(200);
     res.json(messages);
-});
-
-app.post('/pin-message', async (req, res) => {
-    const { messageId } = req.body;
-    const message = await Message.findById(messageId);
-    message.pinned = !message.pinned;
-    await message.save();
-    res.json({ success: true });
-});
-
-app.post('/react-message', async (req, res) => {
-    const { messageId, reaction } = req.body;
-    const message = await Message.findById(messageId);
-    if (!message.reactions.has(reaction)) message.reactions.set(reaction, []);
-    const userReactions = message.reactions.get(reaction);
-    const userIndex = userReactions.indexOf(req.session.userId);
-    if (userIndex === -1) userReactions.push(req.session.userId);
-    else userReactions.splice(userIndex, 1);
-    if (userReactions.length === 0) message.reactions.delete(reaction);
-    await message.save();
-    res.json({ success: true });
 });
 
 app.get('/logout', (req, res) => {
@@ -171,7 +136,7 @@ app.get('/logout', (req, res) => {
 });
 
 const connectedUsers = new Map();
-const channels = ['General', 'Tech', 'Gaming', 'Art', 'Music'];
+const channels = ['Main Hall', 'Math', 'Science', 'English', 'History'];
 
 io.on('connection', async (socket) => {
     const session = socket.request.session;
@@ -184,9 +149,18 @@ io.on('connection', async (socket) => {
     const groups = await Group.find({ members: user._id });
     socket.emit('groups', groups);
 
-    socket.on('join channel', (channel) => socket.join(channel));
-    socket.on('join group', (groupId) => socket.join(groupId));
-    socket.on('join dm', (recipientId) => socket.join(`dm-${recipientId}`));
+    socket.on('join channel', (channel) => {
+        socket.join(channel);
+    });
+
+    socket.on('join group', (groupId) => {
+        socket.join(groupId.toString());
+    });
+
+    socket.on('join dm', (recipientId) => {
+        const room = [session.userId, recipientId].sort().join('-');
+        socket.join(room);
+    });
 
     socket.on('chat message', async (msg) => {
         const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, channel: msg.channel, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
@@ -197,23 +171,23 @@ io.on('connection', async (socket) => {
     socket.on('group message', async (msg) => {
         const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, groupId: msg.groupId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
         await message.save();
-        io.to(msg.groupId).emit('group message', message);
+        io.to(msg.groupId.toString()).emit('group message', message);
     });
 
     socket.on('dm message', async (msg) => {
         const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
         await message.save();
-        io.to(`dm-${msg.recipientId}`).emit('dm message', message);
-        socket.emit('dm message', message);
+        const room = [msg.senderId, msg.recipientId].sort().join('-');
+        io.to(room).emit('dm message', message);
     });
 
     socket.on('image message', async (msg) => {
         const message = new Message({ type: 'image', content: msg.image, username: msg.username, senderId: msg.senderId, channel: msg.channel, groupId: msg.groupId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
         await message.save();
         if (msg.recipientId) {
-            io.to(`dm-${msg.recipientId}`).emit('image message', message);
-            socket.emit('image message', message);
-        } else if (msg.groupId) io.to(msg.groupId).emit('image message', message);
+            const room = [msg.senderId, msg.recipientId].sort().join('-');
+            io.to(room).emit('image message', message);
+        } else if (msg.groupId) io.to(msg.groupId.toString()).emit('image message', message);
         else io.to(msg.channel).emit('image message', message);
     });
 
@@ -221,43 +195,28 @@ io.on('connection', async (socket) => {
         const message = new Message({ type: 'audio', content: msg.audio, username: msg.username, senderId: msg.senderId, channel: msg.channel, groupId: msg.groupId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
         await message.save();
         if (msg.recipientId) {
-            io.to(`dm-${msg.recipientId}`).emit('audio message', message);
-            socket.emit('audio message', message);
-        } else if (msg.groupId) io.to(msg.groupId).emit('audio message', message);
+            const room = [msg.senderId, msg.recipientId].sort().join('-');
+            io.to(room).emit('audio message', message);
+        } else if (msg.groupId) io.to(msg.groupId.toString()).emit('audio message', message);
         else io.to(msg.channel).emit('audio message', message);
-    });
-
-    socket.on('reaction', async (data) => {
-        const message = await Message.findById(data.messageId);
-        if (!message.reactions.has(data.reaction)) message.reactions.set(data.reaction, []);
-        const userReactions = message.reactions.get(data.reaction);
-        const userIndex = userReactions.indexOf(data.userId);
-        if (userIndex === -1) userReactions.push(data.userId);
-        else userReactions.splice(userIndex, 1);
-        if (userReactions.length === 0) message.reactions.delete(data.reaction);
-        await message.save();
-        const target = message.recipientId ? `dm-${message.recipientId}` : message.groupId ? message.groupId : message.channel;
-        io.to(target).emit('reaction update', { messageId: data.messageId, reaction: data.reaction, users: userReactions });
-    });
-
-    socket.on('pin', async (data) => {
-        const message = await Message.findById(data.messageId);
-        message.pinned = !message.pinned;
-        await message.save();
-        const target = message.recipientId ? `dm-${message.recipientId}` : message.groupId ? message.groupId : message.channel;
-        io.to(target).emit('pin update', { messageId: data.messageId, pinned: message.pinned });
     });
 
     socket.on('typing', (data) => {
         if (data.channel) socket.to(data.channel).emit('typing', data);
-        else if (data.groupId) socket.to(data.groupId).emit('typing', data);
-        else if (data.recipientId) socket.to(`dm-${data.recipientId}`).emit('typing', data);
+        else if (data.groupId) socket.to(data.groupId.toString()).emit('typing', data);
+        else if (data.recipientId) {
+            const room = [data.senderId, data.recipientId].sort().join('-');
+            socket.to(room).emit('typing', data);
+        }
     });
 
     socket.on('stop typing', (data) => {
         if (data.channel) socket.to(data.channel).emit('stop typing', data);
-        else if (data.groupId) socket.to(data.groupId).emit('stop typing', data);
-        else if (data.recipientId) socket.to(`dm-${data.recipientId}`).emit('stop typing', data);
+        else if (data.groupId) socket.to(data.groupId.toString()).emit('stop typing', data);
+        else if (data.recipientId) {
+            const room = [data.senderId, data.recipientId].sort().join('-');
+            socket.to(room).emit('stop typing', data);
+        }
     });
 
     socket.on('call-user', (data) => {
@@ -283,6 +242,35 @@ io.on('connection', async (socket) => {
     socket.on('hang-up', (data) => {
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
         if (recipient) io.to(recipient.id).emit('hang-up');
+    });
+
+    socket.on('group-call', (data) => {
+        const groupId = data.groupId;
+        const members = data.members.filter(id => id !== session.userId);
+        members.forEach(memberId => {
+            const recipient = Array.from(connectedUsers.values()).find(u => u.userId === memberId);
+            if (recipient) io.to(recipient.id).emit('group-call-made', { offer: data.offer, from: session.userId, groupId });
+        });
+    });
+
+    socket.on('group-answer', (data) => {
+        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
+        if (recipient) io.to(recipient.id).emit('group-answer-made', { answer: data.answer, groupId: data.groupId });
+    });
+
+    socket.on('group-ice-candidate', (data) => {
+        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
+        if (recipient) io.to(recipient.id).emit('group-ice-candidate', { candidate: data.candidate, groupId: data.groupId });
+    });
+
+    socket.on('group-call-rejected', (data) => {
+        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
+        if (recipient) io.to(recipient.id).emit('group-call-rejected', { groupId: data.groupId });
+    });
+
+    socket.on('group-hang-up', (data) => {
+        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
+        if (recipient) io.to(recipient.id).emit('group-hang-up', { groupId: data.groupId });
     });
 
     socket.on('disconnect', () => {

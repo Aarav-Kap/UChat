@@ -3,18 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UChat - Profile</title>
+    <title>SchoolChat - Profile</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="bg-black flex items-center justify-center min-h-screen">
     <div class="bg-gray-800 p-6 rounded-md shadow-lg text-center">
-        <h2 class="text-xl font-bold text-blue-700 mb-4">UChat Profile</h2>
+        <h2 class="text-xl font-bold text-blue-700 mb-4">SchoolChat Profile</h2>
         <div class="flex flex-col items-center space-y-4">
             <img id="profile-picture" src="" alt="Profile Picture" class="w-32 h-32 rounded-full border-2 border-blue-700">
             <h3 id="profile-username" class="text-lg font-semibold text-white"></h3>
+            <textarea id="profile-bio" placeholder="Write your bio..." class="w-full p-2 rounded-md bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-700"></textarea>
+            <input type="color" id="color-picker" class="w-full h-10">
+            <select id="language-select" class="w-full p-2 rounded-md bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-700">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="zh">Chinese</option>
+            </select>
             <input type="file" id="profile-picture-input" accept="image/*" class="hidden">
             <button onclick="document.getElementById('profile-picture-input').click()" class="bg-blue-700 text-white px-4 py-2 rounded-md hover:bg-blue-600">Change Picture</button>
+            <button onclick="saveProfile()" class="bg-blue-700 text-white px-4 py-2 rounded-md hover:bg-blue-600">Save Changes</button>
             <button onclick="window.location.href='/app'" class="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-500">Back to Chat</button>
         </div>
     </div>
@@ -26,24 +36,35 @@
             const data = await response.json();
             document.getElementById('profile-username').textContent = data.username;
             document.getElementById('profile-picture').src = data.profilePicture || 'https://via.placeholder.com/150';
+            document.getElementById('profile-bio').value = data.bio;
+            document.getElementById('color-picker').value = data.color;
+            document.getElementById('language-select').value = data.language;
         });
 
         document.getElementById('profile-picture-input').addEventListener('change', async () => {
             const file = document.getElementById('profile-picture-input').files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = async () => {
-                const profilePicture = reader.result;
-                document.getElementById('profile-picture').src = profilePicture;
-                await fetch('/update-profile-picture', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ profilePicture }),
-                    credentials: 'include'
-                });
+            reader.onload = () => {
+                document.getElementById('profile-picture').src = reader.result;
             };
             reader.readAsDataURL(file);
         });
+
+        async function saveProfile() {
+            const bio = document.getElementById('profile-bio').value;
+            const profilePicture = document.getElementById('profile-picture').src;
+            const color = document.getElementById('color-picker').value;
+            const language = document.getElementById('language-select').value;
+            await fetch('/update-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bio, profilePicture, color, language }),
+                credentials: 'include'
+            });
+            alert('Profile updated!');
+            window.location.href = '/app';
+        }
     </script>
 </body>
 </html>
