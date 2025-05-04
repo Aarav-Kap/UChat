@@ -184,45 +184,94 @@ io.on('connection', async (socket) => {
     const groups = await Group.find({ members: user._id });
     socket.emit('groups', groups);
 
-    socket.on('join channel', (channel) => socket.join(channel));
-    socket.on('join group', (groupId) => socket.join(groupId));
-    socket.on('join dm', (recipientId) => socket.join(`dm-${recipientId}`));
+    socket.on('join channel', (channel) => {
+        socket.join(channel);
+    });
+
+    socket.on('join group', (groupId) => {
+        socket.join(groupId);
+    });
+
+    socket.on('join dm', ({ recipientId, roomId }) => {
+        socket.join(roomId);
+    });
 
     socket.on('chat message', async (msg) => {
-        const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, channel: msg.channel, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+        const message = new Message({ 
+            type: 'text', 
+            content: msg.text, 
+            username: msg.username, 
+            senderId: msg.senderId, 
+            channel: msg.channel, 
+            profilePicture: msg.profilePicture, 
+            replyTo: msg.replyTo 
+        });
         await message.save();
         io.to(msg.channel).emit('chat message', message);
     });
 
     socket.on('group message', async (msg) => {
-        const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, groupId: msg.groupId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+        const message = new Message({ 
+            type: 'text', 
+            content: msg.text, 
+            username: msg.username, 
+            senderId: msg.senderId, 
+            groupId: msg.groupId, 
+            profilePicture: msg.profilePicture, 
+            replyTo: msg.replyTo 
+        });
         await message.save();
         io.to(msg.groupId).emit('group message', message);
     });
 
-    socket.on('dm message', async (msg) => {
-        const message = new Message({ type: 'text', content: msg.text, username: msg.username, senderId: msg.senderId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+    socket.on('dm message', async ({ roomId, ...msg }) => {
+        const message = new Message({ 
+            type: 'text', 
+            content: msg.text, 
+            username: msg.username, 
+            senderId: msg.senderId, 
+            recipientId: msg.recipientId, 
+            profilePicture: msg.profilePicture, 
+            replyTo: msg.replyTo 
+        });
         await message.save();
-        io.to(`dm-${msg.recipientId}`).emit('dm message', message);
-        socket.emit('dm message', message);
+        io.to(roomId).emit('dm message', message);
     });
 
-    socket.on('image message', async (msg) => {
-        const message = new Message({ type: 'image', content: msg.image, username: msg.username, senderId: msg.senderId, channel: msg.channel, groupId: msg.groupId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+    socket.on('image message', async ({ roomId, ...msg }) => {
+        const message = new Message({ 
+            type: 'image', 
+            content: msg.image, 
+            username: msg.username, 
+            senderId: msg.senderId, 
+            channel: msg.channel, 
+            groupId: msg.groupId, 
+            recipientId: msg.recipientId, 
+            profilePicture: msg.profilePicture, 
+            replyTo: msg.replyTo 
+        });
         await message.save();
         if (msg.recipientId) {
-            io.to(`dm-${msg.recipientId}`).emit('image message', message);
-            socket.emit('image message', message);
+            io.to(roomId).emit('image message', message);
         } else if (msg.groupId) io.to(msg.groupId).emit('image message', message);
         else io.to(msg.channel).emit('image message', message);
     });
 
-    socket.on('audio message', async (msg) => {
-        const message = new Message({ type: 'audio', content: msg.audio, username: msg.username, senderId: msg.senderId, channel: msg.channel, groupId: msg.groupId, recipientId: msg.recipientId, profilePicture: msg.profilePicture, replyTo: msg.replyTo });
+    socket.on('audio message', async ({ roomId, ...msg }) => {
+        const message = new Message({ 
+            type: 'audio', 
+            content: msg.audio, 
+            username: msg.username, 
+            senderId: msg.senderId, 
+            channel: msg.channel, 
+            groupId: msg.groupId, 
+            recipientId: msg.recipientId, 
+            profilePicture: msg.profilePicture, 
+            replyTo: msg.replyTo 
+        });
         await message.save();
         if (msg.recipientId) {
-            io.to(`dm-${msg.recipientId}`).emit('audio message', message);
-            socket.emit('audio message', message);
+            io.to(roomId).emit('audio message', message);
         } else if (msg.groupId) io.to(msg.groupId).emit('audio message', message);
         else io.to(msg.channel).emit('audio message', message);
     });
@@ -236,28 +285,26 @@ io.on('connection', async (socket) => {
         else userReactions.splice(userIndex, 1);
         if (userReactions.length === 0) message.reactions.delete(data.reaction);
         await message.save();
-        const target = message.recipientId ? `dm-${message.recipientId}` : message.groupId ? message.groupId : message.channel;
-        io.to(target).emit('reaction update', { messageId: data.messageId, reaction: data.reaction, users: userReactions });
+        const target = message.recipientId ? [message.senderId, message.recipientId].sort().join('-') : message.groupId ? message.groupId : message.channel;
+        io.to(target).emit('reaction update', { messageId: data.messageId, reaction: data.reaction, reactions: message.reactions });
     });
 
     socket.on('pin', async (data) => {
         const message = await Message.findById(data.messageId);
         message.pinned = !message.pinned;
         await message.save();
-        const target = message.recipientId ? `dm-${message.recipientId}` : message.groupId ? message.groupId : message.channel;
+        const target = message.recipientId ? [message.senderId, message.recipientId].sort().join('-') : message.groupId ? message.groupId : message.channel;
         io.to(target).emit('pin update', { messageId: data.messageId, pinned: message.pinned });
     });
 
     socket.on('typing', (data) => {
-        if (data.channel) socket.to(data.channel).emit('typing', data);
-        else if (data.groupId) socket.to(data.groupId).emit('typing', data);
-        else if (data.recipientId) socket.to(`dm-${data.recipientId}`).emit('typing', data);
+        const target = data.roomId || data.groupId || data.channel;
+        socket.to(target).emit('typing', data);
     });
 
     socket.on('stop typing', (data) => {
-        if (data.channel) socket.to(data.channel).emit('stop typing', data);
-        else if (data.groupId) socket.to(data.groupId).emit('stop typing', data);
-        else if (data.recipientId) socket.to(`dm-${data.recipientId}`).emit('stop typing', data);
+        const target = data.roomId || data.groupId || data.channel;
+        socket.to(target).emit('stop typing', data);
     });
 
     socket.on('call-user', (data) => {
@@ -267,7 +314,7 @@ io.on('connection', async (socket) => {
 
     socket.on('make-answer', (data) => {
         const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('answer-made', { answer: data.answer });
+        if (recipient) io.to(recipient.id).emit('answer-made', { answer: data.answer, from: data.from });
     });
 
     socket.on('ice-candidate', (data) => {
