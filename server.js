@@ -20,7 +20,7 @@ const handle = nextApp.getRequestHandler();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://your-render-app.onrender.com', // Replace with your Render URL
+    origin: 'https://uchat-997p.onrender.com', // Replace with your Render URL
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -80,7 +80,7 @@ nextApp.prepare().then(() => {
     cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, secure: false },
   });
   app.use(sessionMiddleware);
-  app.use(cors({ origin: 'https://your-render-app.onrender.com', credentials: true })); // Replace with your Render URL
+  app.use(cors({ origin: 'https://uchat-997p.onrender.com', credentials: true })); // Replace with your Render URL
   app.use(express.json());
   app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
