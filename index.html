@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Uchat</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar" id="sidebar">
+      <h2>Users</h2>
+      <ul id="userList"></ul>
+      <div id="authSection">
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+        <button onclick="register()">Register</button>
+        <button onclick="logout()">Logout</button>
+      </div>
+    </div>
+    <div class="chat">
+      <div class="chat-header">
+        <select id="chatType" onchange="switchChat()">
+          <option value="main">Main Chat</option>
+          <option value="dm">Direct Messages</option>
+        </select>
+        <select id="dmUser" style="display:none;">
+          <option value="">Select User</option>
+        </select>
+      </div>
+      <div id="chatMessages" class="messages"></div>
+      <div class="input-area">
+        <input type="text" id="messageInput" placeholder="Type a message...">
+        <input type="file" id="fileInput" accept="image/*" onchange="uploadFile()">
+        <button onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+  <audio id="notifySound" src="notify.mp3"></audio>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
