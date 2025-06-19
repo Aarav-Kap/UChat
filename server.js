@@ -43,7 +43,9 @@ app.get('/chat', (req, res) => {
         return res.redirect('/login');
     }
     console.log('Serving chat page for:', req.session.user.username);
-    res.sendFile(path.join(__dirname, 'chat.html'));
+    res.sendFile(path.join(__dirname, 'chat.html'), { user: req.session.user.username }, (err) => {
+        if (err) console.error('Error sending chat.html:', err);
+    });
 });
 
 // Authentication
@@ -104,7 +106,7 @@ io.on('connection', (socket) => {
         } else {
             messages[channel].push(message);
         }
-        io.to(channel).emit('newMessage', message);
+        io.to(channel).emit('newMessage', message); // Broadcast to all in channel
     });
 });
 

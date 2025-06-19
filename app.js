@@ -1,5 +1,5 @@
 const socket = io();
-const user = JSON.parse(document.querySelector('script').getAttribute('data-user') || '{}');
+let user = { username: document.querySelector('script').textContent.match(/username: "([^"]+)"/)?.[1] || 'undefined' };
 let currentChannel = 'General';
 let currentDM = null;
 
@@ -58,7 +58,7 @@ document.querySelectorAll('.channel-btn').forEach(btn => {
     });
 });
 
-// Load DMs
+// Load DMs and handle live updates
 async function loadDMs() {
     const dmList = document.getElementById('dmList');
     dmList.innerHTML = '';
@@ -79,6 +79,14 @@ async function loadDMs() {
         }
     });
 }
+
+// Live message updates
+socket.on('newMessage', (msg) => {
+    if ((currentDM && msg.channel === `DM_${[user.username, currentDM].sort().join('_')}`) || 
+        (!currentDM && msg.channel === currentChannel)) {
+        displayMessage(msg);
+    }
+});
 
 // Logout
 document.getElementById('logoutBtn').addEventListener('click', async () => {
