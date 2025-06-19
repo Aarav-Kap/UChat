@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UChat</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white flex min-h-screen">
+    <!-- Sidebar -->
+    <div class="w-64 bg-gray-800 p-4 flex flex-col">
+        <h1 class="text-2xl font-bold mb-6 text-blue-400">UChat</h1>
+        <div class="flex-1">
+            <h3 class="text-sm font-semibold text-gray-400 mb-2">Channels</h3>
+            <ul id="channelList" class="space-y-1">
+                <li><button class="channel-btn w-full text-left p-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition duration-200" data-channel="General"><i class="fas fa-hashtag mr-2"></i>General</button></li>
+            </ul>
+            <h3 class="text-sm font-semibold text-gray-400 mt-4 mb-2">Direct Messages</h3>
+            <ul id="dmList" class="space-y-1"></ul>
+        </div>
+        <div class="mt-4">
+            <p class="text-sm text-gray-400 mb-2">Logged in as: <span id="username"></span></p>
+            <button id="logoutBtn" class="w-full p-2 bg-red-600 rounded-lg hover:bg-red-700 transition duration-200"><i class="fas fa-sign-out-alt mr-2"></i>Logout</button>
+        </div>
+    </div>
+    <!-- Chat Area -->
+    <div class="flex-1 flex flex-col">
+        <div class="p-4 bg-gray-850 flex justify-between items-center border-b border-gray-700">
+            <h2 id="currentChannel" class="text-xl font-semibold"></h2>
+        </div>
+        <div id="messages" class="flex-1 p-4 overflow-y-auto bg-gray-900"></div>
+        <div class="p-4 bg-gray-850 border-t border-gray-700">
+            <div class="flex space-x-2">
+                <input type="text" id="messageInput" class="flex-1 p-3 bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type a message...">
+                <button id="sendBtn" class="p-3 bg-blue-600 rounded-lg hover:bg-blue-700 transition duration-200"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+    <script src="/app.js"></script>
+</body>
+</html>

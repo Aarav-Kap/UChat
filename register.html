@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UChat - Register</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-sm p-8 bg-gray-800 rounded-xl shadow-xl animate__animated animate__fadeIn">
+        <h2 class="text-3xl font-bold text-center mb-6">UChat</h2>
+        <form id="registerForm" class="space-y-4">
+            <div>
+                <label for="username" class="block text-sm font-medium">Username</label>
+                <input type="text" id="username" name="username" class="w-full p-3 mt-1 bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-medium">Password</label>
+                <input type="password" id="password" name="password" class="w-full p-3 mt-1 bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            </div>
+            <button type="submit" class="w-full p-3 bg-blue-600 rounded-lg hover:bg-blue-700 transition duration-200">Register</button>
+        </form>
+        <p class="mt-4 text-center text-sm">Have an account? <a href="/login" class="text-blue-400 hover:underline">Sign in</a></p>
+        <p id="error" class="mt-4 text-center text-red-500 hidden"></p>
+    </div>
+    <script>
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const error = document.getElementById('error');
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    error.textContent = data.error;
+                    error.classList.remove('hidden');
+                } else {
+                    window.location.href = '/login';
+                }
+            } catch (err) {
+                error.textContent = 'Server error';
+                error.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
