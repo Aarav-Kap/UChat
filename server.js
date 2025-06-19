@@ -1,331 +1,258 @@
+// server.js
 const express = require('express');
-const app = express();
-const http = require('http').Server(app);
-const io = require('socket.io')(http, { cors: { origin: '*', methods: ['GET', 'POST'], credentials: true } });
+const http = require('http');
+const { Server } = require('socket.io');
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const cors = require('cors');
+const multer = require('multer');
 const path = require('path');
 
-mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/schoolchat?retryWrites=true&w=majority&appName=Cluster0')
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB error:', err));
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
+
+mongoose.connect('mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/uchat?retryWrites=true&w=majority&appName=Cluster0')
+  .then(() => console.log('Connected to MongoDB'))
+  .catch(err => console.error('MongoDB error:', err));
 
 const userSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    bio: { type: String, default: '' },
-    color: { type: String, default: '#1E90FF' },
-    language: { type: String, default: 'en' },
-    profilePicture: { type: String, default: '' },
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  bio: { type: String, default: '' },
+  avatar: { type: String, default: 'https://via.placeholder.com/50' },
+  language: { type: String, default: 'en' },
 });
 const User = mongoose.model('User', userSchema);
 
+const messageSchema = new mongoose.Schema({
+  senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  content: { type: String, required: true },
+  type: { type: String, enum: ['text', 'image', 'audio'], required: true },
+  channel: { type: String },
+  recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group' },
+  replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message' },
+  timestamp: { type: Date, default: Date.now },
+});
+const Message = mongoose.model('Message', messageSchema);
+
 const groupSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  name: { type: String, required: true },
+  members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  isPrivate: { type: Boolean, default: false },
 });
 const Group = mongoose.model('Group', groupSchema);
 
+const blockedContentSchema = new mongoose.Schema({
+  content: { type: String, required: true },
+  senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  timestamp: { type: Date, default: Date.now },
+});
+const BlockedContent = mongoose.model('BlockedContent', blockedContentSchema);
+
 const store = new MongoDBStore({
-    uri: 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/schoolchat?retryWrites=true&w=majority&appName=Cluster0',
-    collection: 'sessions',
+  uri: 'mongodb+srv://chatadmin:ChatPass123@cluster0.nlz2e.mongodb.net/uchat?retryWrites=true&w=majority&appName=Cluster0',
+  collection: 'sessions',
 });
 store.on('error', err => console.error('Session error:', err));
 
 const sessionMiddleware = session({
-    secret: 'SchoolChatSecret2025',
-    resave: false,
-    saveUninitialized: false,
-    store: store,
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, secure: false },
+  secret: 'UchatSecret2025',
+  resave: false,
+  saveUninitialized: false,
+  store: store,
+  cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, secure: false },
 });
 app.use(sessionMiddleware);
-app.use(express.static(path.join(__dirname)));
+app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
-io.use((socket, next) => {
-    sessionMiddleware(socket.request, {}, next);
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'public/uploads/'),
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
 });
+const upload = multer({ storage });
 
-app.get('/', (req, res) => {
-    if (req.session.userId) return res.redirect('/app');
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-app.get('/app', (req, res) => {
-    if (!req.session.userId) return res.redirect('/');
-    res.sendFile(path.join(__dirname, 'app.html'));
-});
-
-app.get('/profile', (req, res) => {
-    if (!req.session.userId) return res.redirect('/');
-    res.sendFile(path.join(__dirname, 'profile.html'));
+app.post('/register', async (req, res) => {
+  const { username, password } = req.body;
+  if (await User.findOne({ username })) return res.status(400).json({ error: 'Username taken' });
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const user = new User({ username, password: hashedPassword });
+  await user.save();
+  req.session.userId = user._id.toString();
+  res.json({ success: true });
 });
 
 app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    const user = await User.findOne({ username });
-    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ error: 'Invalid credentials' });
-    req.session.userId = user._id.toString();
-    req.session.username = user.username;
-    res.json({ success: true });
-});
-
-app.post('/register', async (req, res) => {
-    const { username, password } = req.body;
-    if (await User.findOne({ username })) return res.status(400).json({ error: 'Username taken' });
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ username, password: hashedPassword });
-    await user.save();
-    req.session.userId = user._id.toString();
-    req.session.username = user.username;
-    res.json({ success: true });
-});
-
-app.get('/user', async (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const user = await User.findById(req.session.userId);
-    res.json({ username: user.username, bio: user.bio, color: user.color, language: user.language, userId: user._id.toString(), profilePicture: user.profilePicture });
-});
-
-app.post('/update-profile', async (req, res) => {
-    const { bio, profilePicture, color, language } = req.body;
-    const user = await User.findById(req.session.userId);
-    if (bio !== undefined) user.bio = bio;
-    if (profilePicture) user.profilePicture = profilePicture;
-    if (color) user.color = color;
-    if (language) user.language = language;
-    await user.save();
-    res.json({ success: true });
-});
-
-app.post('/create-group', async (req, res) => {
-    const { name, memberIds } = req.body;
-    const group = new Group({ name, members: [req.session.userId, ...memberIds.map(id => mongoose.Types.ObjectId(id))] });
-    await group.save();
-    res.json({ success: true, groupId: group._id.toString() });
+  const { username, password } = req.body;
+  const user = await User.findOne({ username });
+  if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ error: 'Invalid credentials' });
+  req.session.userId = user._id.toString();
+  res.json({ success: true });
 });
 
 app.get('/logout', (req, res) => {
-    req.session.destroy(() => res.redirect('/'));
+  req.session.destroy(() => res.json({ success: true }));
+});
+
+app.get('/user', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+  const user = await User.findById(req.session.userId);
+  res.json({ username: user.username, bio: user.bio, avatar: user.avatar, language: user.language, userId: user._id.toString() });
+});
+
+app.post('/update-profile', async (req, res) => {
+  const { bio, avatar, language } = req.body;
+  const user = await User.findById(req.session.userId);
+  if (bio) user.bio = bio;
+  if (avatar) user.avatar = avatar;
+  if (language) user.language = language;
+  await user.save();
+  res.json({ success: true });
+});
+
+app.post('/create-group', async (req, res) => {
+  const { name, isPrivate, memberIds } = req.body;
+  const group = new Group({ name, isPrivate, members: [req.session.userId, ...memberIds.map(id => mongoose.Types.ObjectId(id))] });
+  await group.save();
+  res.json({ success: true, groupId: group._id.toString() });
+});
+
+app.post('/upload', upload.single('file'), (req, res) => {
+  res.json({ url: `/uploads/${req.file.filename}` });
+});
+
+const swearWords = ['badword1', 'badword2', 'slur1']; // Expand this list as needed
+const filterMessage = (content) => {
+  const lowerContent = content.toLowerCase();
+  const isBlocked = swearWords.some(word => lowerContent.includes(word));
+  if (isBlocked) {
+    const blocked = new BlockedContent({ content, senderId: req.session.userId });
+    blocked.save();
+    return null;
+  }
+  return content;
+};
+
+io.use((socket, next) => {
+  sessionMiddleware(socket.request, socket.request.res || {}, next);
 });
 
 const connectedUsers = new Map();
-const channels = ['Math', 'Science', 'English', 'History', 'Art'];
+const channels = ['General', 'Random', 'Announcements'];
 
 io.on('connection', async (socket) => {
-    const session = socket.request.session;
-    if (!session.userId) return socket.disconnect(true);
+  const session = socket.request.session;
+  if (!session.userId) return socket.disconnect(true);
 
-    const user = await User.findById(session.userId);
-    connectedUsers.set(socket.id, { id: socket.id, userId: user._id.toString(), username: user.username, profilePicture: user.profilePicture });
-    io.emit('user list', Array.from(connectedUsers.values()).map(u => ({ userId: u.userId, username: u.username, profilePicture: u.profilePicture })));
-    io.emit('channels', channels);
-    const groups = await Group.find({ members: user._id });
-    socket.emit('groups', groups.map(g => ({ _id: g._id.toString(), name: g.name })));
+  const user = await User.findById(session.userId);
+  connectedUsers.set(socket.id, { id: socket.id, userId: user._id.toString(), username: user.username, avatar: user.avatar });
+  io.emit('user list', Array.from(connectedUsers.values()).map(u => ({ userId: u.userId, username: u.username, avatar: u.avatar })));
+  io.emit('channels', channels);
+  const groups = await Group.find({ members: user._id });
+  socket.emit('groups', groups.map(g => ({ _id: g._id.toString(), name: g.name, isPrivate: g.isPrivate })));
 
-    socket.on('join channel', (channel) => {
-        socket.join(channel);
-        socket.emit('channel joined', channel);
-    });
+  socket.on('join channel', (channel) => {
+    socket.join(channel);
+    socket.emit('channel joined', channel);
+  });
 
-    socket.on('join group', (groupId) => {
-        socket.join(groupId);
-        socket.emit('group joined', groupId);
-    });
+  socket.on('join group', (groupId) => {
+    socket.join(groupId);
+    socket.emit('group joined', groupId);
+  });
 
-    socket.on('join dm', (recipientId) => {
-        const room = [session.userId, recipientId].sort().join('-');
-        socket.join(room);
-        socket.emit('dm joined', recipientId);
-    });
+  socket.on('join dm', (recipientId) => {
+    const room = [session.userId, recipientId].sort().join('-');
+    socket.join(room);
+    socket.emit('dm joined', recipientId);
+  });
 
-    socket.on('chat message', (msg) => {
-        io.to(msg.channel).emit('chat message', {
-            type: 'text',
-            content: msg.text,
-            username: msg.username,
-            senderId: msg.senderId,
-            channel: msg.channel,
-            profilePicture: msg.profilePicture,
-            color: msg.color,
-        });
-    });
+  socket.on('chat message', async (msg) => {
+    const filteredContent = filterMessage(msg.content);
+    if (!filteredContent) return;
+    const message = new Message({ ...msg, content: filteredContent });
+    await message.save();
+    io.to(msg.channel).emit('chat message', message.toObject());
+  });
 
-    socket.on('group message', (msg) => {
-        io.to(msg.groupId).emit('group message', {
-            type: 'text',
-            content: msg.text,
-            username: msg.username,
-            senderId: msg.senderId,
-            groupId: msg.groupId,
-            profilePicture: msg.profilePicture,
-            color: msg.color,
-        });
-    });
+  socket.on('dm message', async (msg) => {
+    const filteredContent = filterMessage(msg.content);
+    if (!filteredContent) return;
+    const message = new Message({ ...msg, content: filteredContent });
+    await message.save();
+    const room = [msg.senderId, msg.recipientId].sort().join('-');
+    io.to(room).emit('dm message', message.toObject());
+  });
 
-    socket.on('dm message', (msg) => {
-        const room = [msg.senderId, msg.recipientId].sort().join('-');
-        io.to(room).emit('dm message', {
-            type: 'text',
-            content: msg.text,
-            username: msg.username,
-            senderId: msg.senderId,
-            recipientId: msg.recipientId,
-            profilePicture: msg.profilePicture,
-            color: msg.color,
-        });
-    });
+  socket.on('group message', async (msg) => {
+    const filteredContent = filterMessage(msg.content);
+    if (!filteredContent) return;
+    const message = new Message({ ...msg, content: filteredContent });
+    await message.save();
+    io.to(msg.groupId).emit('group message', message.toObject());
+  });
 
-    socket.on('image message', (msg) => {
-        if (msg.recipientId) {
-            const room = [msg.senderId, msg.recipientId].sort().join('-');
-            io.to(room).emit('image message', {
-                type: 'image',
-                content: msg.image,
-                username: msg.username,
-                senderId: msg.senderId,
-                recipientId: msg.recipientId,
-                profilePicture: msg.profilePicture,
-                color: msg.color,
-            });
-        } else if (msg.groupId) {
-            io.to(msg.groupId).emit('image message', {
-                type: 'image',
-                content: msg.image,
-                username: msg.username,
-                senderId: msg.senderId,
-                groupId: msg.groupId,
-                profilePicture: msg.profilePicture,
-                color: msg.color,
-            });
-        } else {
-            io.to(msg.channel).emit('image message', {
-                type: 'image',
-                content: msg.image,
-                username: msg.username,
-                senderId: msg.senderId,
-                channel: msg.channel,
-                profilePicture: msg.profilePicture,
-                color: msg.color,
-            });
-        }
-    });
+  socket.on('image message', async (msg) => {
+    const filteredContent = filterMessage(msg.content || 'Image');
+    if (!filteredContent) return;
+    const message = new Message({ ...msg, content: filteredContent });
+    await message.save();
+    if (msg.recipientId) {
+      const room = [msg.senderId, msg.recipientId].sort().join('-');
+      io.to(room).emit('image message', message.toObject());
+    } else if (msg.groupId) {
+      io.to(msg.groupId).emit('image message', message.toObject());
+    } else {
+      io.to(msg.channel).emit('image message', message.toObject());
+    }
+  });
 
-    socket.on('audio message', (msg) => {
-        if (msg.recipientId) {
-            const room = [msg.senderId, msg.recipientId].sort().join('-');
-            io.to(room).emit('audio message', {
-                type: 'audio',
-                content: msg.audio,
-                username: msg.username,
-                senderId: msg.senderId,
-                recipientId: msg.recipientId,
-                profilePicture: msg.profilePicture,
-                color: msg.color,
-            });
-        } else if (msg.groupId) {
-            io.to(msg.groupId).emit('audio message', {
-                type: 'audio',
-                content: msg.audio,
-                username: msg.username,
-                senderId: msg.senderId,
-                groupId: msg.groupId,
-                profilePicture: msg.profilePicture,
-                color: msg.color,
-            });
-        } else {
-            io.to(msg.channel).emit('audio message', {
-                type: 'audio',
-                content: msg.audio,
-                username: msg.username,
-                senderId: msg.senderId,
-                channel: msg.channel,
-                profilePicture: msg.profilePicture,
-                color: msg.color,
-            });
-        }
-    });
+  socket.on('audio message', async (msg) => {
+    const filteredContent = filterMessage(msg.content || 'Audio');
+    if (!filteredContent) return;
+    const message = new Message({ ...msg, content: filteredContent });
+    await message.save();
+    if (msg.recipientId) {
+      const room = [msg.senderId, msg.recipientId].sort().join('-');
+      io.to(room).emit('audio message', message.toObject());
+    } else if (msg.groupId) {
+      io.to(msg.groupId).emit('audio message', message.toObject());
+    } else {
+      io.to(msg.channel).emit('image message', message.toObject());
+    }
+  });
 
-    socket.on('typing', (data) => {
-        if (data.channel) socket.to(data.channel).emit('typing', data);
-        else if (data.groupId) socket.to(data.groupId).emit('typing', data);
-        else if (data.recipientId) {
-            const room = [data.senderId, data.recipientId].sort().join('-');
-            socket.to(room).emit('typing', data);
-        }
-    });
+  socket.on('call-user', (data) => {
+    const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
+    if (recipient) io.to(recipient.id).emit('call-made', data);
+  });
 
-    socket.on('stop typing', (data) => {
-        if (data.channel) socket.to(data.channel).emit('stop typing', data);
-        else if (data.groupId) socket.to(data.groupId).emit('stop typing', data);
-        else if (data.recipientId) {
-            const room = [data.senderId, data.recipientId].sort().join('-');
-            socket.to(room).emit('stop typing', data);
-        }
-    });
+  socket.on('answer-made', (data) => {
+    const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
+    if (recipient) io.to(recipient.id).emit('answer-made', data);
+  });
 
-    socket.on('call-user', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('call-made', { offer: data.offer, from: data.from });
-    });
+  socket.on('ice-candidate', (data) => {
+    const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
+    if (recipient) io.to(recipient.id).emit('ice-candidate', data);
+  });
 
-    socket.on('make-answer', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('answer-made', { answer: data.answer, from: data.from });
-    });
-
-    socket.on('ice-candidate', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('ice-candidate', { candidate: data.candidate, to: data.to });
-    });
-
-    socket.on('call-rejected', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('call-rejected');
-    });
-
-    socket.on('hang-up', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('hang-up');
-    });
-
-    socket.on('group-call', (data) => {
-        const groupId = data.groupId;
-        const members = data.members.filter(id => id !== session.userId);
-        members.forEach(memberId => {
-            const recipient = Array.from(connectedUsers.values()).find(u => u.userId === memberId);
-            if (recipient) io.to(recipient.id).emit('group-call-made', { offer: data.offer, from: session.userId, groupId });
-        });
-    });
-
-    socket.on('group-answer', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('group-answer-made', { answer: data.answer, from: data.from, groupId: data.groupId });
-    });
-
-    socket.on('group-ice-candidate', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('group-ice-candidate', { candidate: data.candidate, to: data.to, groupId: data.groupId });
-    });
-
-    socket.on('group-call-rejected', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('group-call-rejected', { groupId: data.groupId });
-    });
-
-    socket.on('group-hang-up', (data) => {
-        const recipient = Array.from(connectedUsers.values()).find(u => u.userId === data.to);
-        if (recipient) io.to(recipient.id).emit('group-hang-up', { groupId: data.groupId });
-    });
-
-    socket.on('disconnect', () => {
-        connectedUsers.delete(socket.id);
-        io.emit('user list', Array.from(connectedUsers.values()).map(u => ({ userId: u.userId, username: u.username, profilePicture: u.profilePicture })));
-    });
+  socket.on('disconnect', () => {
+    connectedUsers.delete(socket.id);
+    io.emit('user list', Array.from(connectedUsers.values()).map(u => ({ userId: u.userId, username: u.username, avatar: u.avatar })));
+  });
 });
 
-const PORT = process.env.PORT || 10000;
-http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
