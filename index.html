@@ -3,48 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UChat - Simplified</title>
+    <title>Uchat Chat</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
-<body class="bg-gray-900 text-white flex min-h-screen">
-    <div class="w-64 bg-gray-800 p-4 flex flex-col">
-        <h1 class="text-2xl font-bold mb-6 text-blue-400">UChat</h1>
-        <div class="flex-1">
-            <h3 class="text-sm font-semibold text-gray-400 mb-2">Channels</h3>
-            <ul id="channelList" class="space-y-1">
-                <li><button class="channel-btn w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600" data-channel="General"><i class="fas fa-hashtag mr-2"></i>General</button></li>
-            </ul>
-            <h3 class="text-sm font-semibold text-gray-400 mt-4 mb-2">Direct Messages</h3>
-            <ul id="dmList" class="space-y-1"></ul>
-        </div>
-        <div class="mt-4">
-            <p class="text-sm text-gray-400">User: <span id="username"></span></p>
-            <select id="colorSelect" class="w-full p-2 bg-gray-700 rounded mt-2">
-                <option value="#ffffff">White</option>
-                <option value="#ff0000">Red</option>
-                <option value="#00ff00">Green</option>
-                <option value="#0000ff">Blue</option>
-                <option value="#ffff00">Yellow</option>
-            </select>
-            <button id="leaveBtn" class="w-full p-2 bg-red-600 rounded hover:bg-red-700 mt-2"><i class="fas fa-sign-out-alt mr-2"></i>Leave</button>
-        </div>
+<body class="bg-gray-900 text-white flex flex-col h-screen">
+    <div class="p-4 bg-gray-800 text-center">
+        <h1 class="text-2xl font-bold">Uchat Chat</h1>
+        <p id="userDisplay" class="text-sm mt-2"></p>
     </div>
-    <div class="flex-1 flex flex-col">
-        <div class="p-4 bg-gray-800 border-b border-gray-700">
-            <h2 id="currentChannel" class="text-xl font-semibold"></h2>
-        </div>
-        <div id="messages" class="flex-1 p-4 overflow-y-auto bg-gray-900"></div>
-        <div class="p-4 bg-gray-800 border-t border-gray-700">
-            <div class="flex space-x-2">
-                <input type="text" id="messageInput" class="flex-1 p-2 bg-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type a message...">
-                <input type="file" id="voiceInput" accept="audio/*" class="hidden">
-                <button id="voiceBtn" class="p-2 bg-green-600 rounded hover:bg-green-700"><i class="fas fa-microphone"></i></button>
-                <button id="sendBtn" class="p-2 bg-blue-600 rounded hover:bg-blue-700"><i class="fas fa-paper-plane"></i></button>
-            </div>
-        </div>
+    <div id="messages" class="flex-1 p-4 overflow-y-auto"></div>
+    <div class="p-4 bg-gray-800 flex space-x-2">
+        <input type="text" id="messageInput" class="flex-1 p-2 bg-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type a message or emoji...">
+        <select id="emojiSelect" class="p-2 bg-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Select Emoji</option>
+            <option value="😊">😊</option>
+            <option value="😂">😂</option>
+            <option value="👍">👍</option>
+            <option value="❤️">❤️</option>
+        </select>
+        <input type="file" id="photoInput" accept="image/*" class="hidden">
+        <button id="photoBtn" class="p-2 bg-blue-600 rounded hover:bg-blue-700"><i class="fas fa-camera"></i></button>
+        <button id="sendBtn" class="p-2 bg-blue-600 rounded hover:bg-blue-700"><i class="fas fa-paper-plane"></i></button>
     </div>
-    <script src="/app.js"></script>
+    <script>
+        const socket = io();
+        let username = prompt('Enter your username:');
+        if (username) {
+            document.getElementById('userDisplay').textContent = `User: ${username}`;
+        } else {
+            username = 'Guest';
+            document.getElementById('userDisplay').textContent = `User: ${username}`;
+        }
+
+        function addMessage(msg) {
+            const messagesDiv = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${msg.username === username ? 'own' : ''} p-2 mb-2 rounded`;
+            div.style.backgroundColor = msg.username === username ? '#2563EB' : '#374151';
+            let content = msg.content;
+            if (msg.photo) {
+                content = `<img src="${msg.photo}" alt="Photo" class="max-w-full mt-2">`;
+            }
+            div.innerHTML = `<p><strong>${msg.username}</strong>: ${content}</p>`;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        socket.on('chat message', (msg) => {
+            addMessage(msg);
+        });
+
+        socket.on('photo upload', (data) => {
+            addMessage({ username: data.username, photo: data.photo });
+        });
+
+        document.getElementById('sendBtn').addEventListener('click', () => {
+            const input = document.getElementById('messageInput');
+            const emojiSelect = document.getElementById('emojiSelect');
+            const content = input.value.trim() || emojiSelect.value;
+            if (content) {
+                socket.emit('chat message', { username, content });
+                input.value = '';
+                emojiSelect.value = '';
+            }
+            const photoInput = document.getElementById('photoInput');
+            if (photoInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    socket.emit('photo upload', { username, photo: e.target.result });
+                };
+                reader.readAsDataURL(photoInput.files[0]);
+                photoInput.value = '';
+            }
+        });
+
+        document.getElementById('photoBtn').addEventListener('click', () => {
+            document.getElementById('photoInput').click();
+        });
+
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                document.getElementById('sendBtn').click();
+            }
+        });
+    </script>
 </body>
 </html>
