@@ -9,13 +9,13 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// In-memory storage (no persistence)
+// In-memory storage
 const users = new Map(); // username -> { passwordHash }
-const messages = { General: [], DMs: {} }; // General: [], DMs: { user1_user2: [] }
+const messages = { General: [], DMs: {} }; // Channel/DM messages
 
 // Middleware
 app.use(express.static(__dirname));
-app.use(express.json({ limit: '10mb' })); // Increased limit for images/audio
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(session({
     secret: 'UChatSecret2025',
@@ -26,7 +26,7 @@ app.use(session({
 
 // Routes
 app.get('/', (req, res) => {
-    console.log('Redirecting from / to /login');
+    console.log('Redirecting to /login');
     res.redirect('/login');
 });
 app.get('/login', (req, res) => {
@@ -43,7 +43,7 @@ app.get('/chat', (req, res) => {
         return res.redirect('/login');
     }
     console.log('Serving chat page for:', req.session.user.username);
-    res.sendFile(path.join(__dirname, 'chat.html'), { user: req.session.user.username }, (err) => {
+    res.sendFile(path.join(__dirname, 'chat.html'), (err) => {
         if (err) console.error('Error sending chat.html:', err);
     });
 });
@@ -51,31 +51,22 @@ app.get('/chat', (req, res) => {
 // Authentication
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
-    if (users.has(username)) {
-        console.log('Registration failed: Username taken:', username);
-        return res.status(400).json({ error: 'Username taken' });
-    }
+    if (users.has(username)) return res.status(400).json({ error: 'Username taken' });
     const passwordHash = await bcrypt.hash(password, 10);
     users.set(username, { passwordHash });
-    console.log('Registered user:', username);
-    res.status(201).json({ message: 'Registered' });
+    console.log('Registered:', username);
+    res.json({ message: 'Registered' });
 });
 
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    console.log('Login attempt for:', username);
     const user = users.get(username);
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-        console.log('Invalid credentials for:', username);
         return res.status(401).json({ error: 'Invalid credentials' });
     }
     req.session.user = { username };
     req.session.save(err => {
-        if (err) {
-            console.error('Session save error:', err);
-            return res.status(500).json({ error: 'Session error' });
-        }
-        console.log('Session saved for:', username);
+        if (err) return res.status(500).json({ error: 'Session error' });
         res.json({ message: 'Logged in' });
     });
 });
@@ -93,23 +84,23 @@ app.get('/users', (req, res) => {
 io.on('connection', (socket) => {
     socket.on('joinChannel', ({ channel, username }) => {
         socket.join(channel);
-        const channelMessages = channel.startsWith('DM_') ? messages.DMs[channel] || [] : messages[channel];
+        const channelMessages = channel.startsWith('DM_') ? (messages.DMs[channel] || []) : (messages[channel] || []);
         socket.emit('loadMessages', channelMessages);
         console.log(`${username} joined ${channel}`);
     });
 
-    socket.on('sendMessage', ({ channel, content, sender, type = 'text', data }) => {
-        const message = { sender, content, timestamp: new Date(), type, data };
+    socket.on('sendMessage', ({ channel, content, sender, type = 'text', data, replyTo }) => {
+        const message = { sender, content, timestamp: new Date(), type, data, replyTo };
         if (channel.startsWith('DM_')) {
             if (!messages.DMs[channel]) messages.DMs[channel] = [];
             messages.DMs[channel].push(message);
         } else {
+            if (!messages[channel]) messages[channel] = [];
             messages[channel].push(message);
         }
         io.to(channel).emit('newMessage', message);
     });
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

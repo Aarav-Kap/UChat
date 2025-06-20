@@ -1,5 +1,5 @@
 const socket = io();
-let user = { username: document.querySelector('script').textContent.match(/username: "([^"]+)"/)?.[1] || 'undefined' };
+let user = { username: document.querySelector('script').textContent.match(/username: "([^"]+)"/)?.[1] || 'Guest' };
 let currentChannel = 'General';
 let currentDM = null;
 let mediaRecorder = null;
@@ -23,19 +23,17 @@ function displayMessage(msg) {
     div.className = `message ${msg.sender === user.username ? 'own' : ''}`;
     let contentHtml = `<div class="message-header">
         <span>${msg.sender}</span>
-        <span class="message-timestamp">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        <span class="message-timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span>
     </div>`;
     if (msg.type === 'text') {
         contentHtml += `<p>${msg.content}</p>`;
+        if (msg.replyTo) contentHtml += `<p class="text-gray-400 text-sm">Replying to: ${msg.replyTo}</p>`;
     } else if (msg.type === 'image') {
-        contentHtml += `<img src="${msg.data}" alt="Image" class="max-w-full h-auto mt-2">`;
+        contentHtml += `<img src="${msg.data}" alt="Image" class="max-w-full mt-2">`;
     } else if (msg.type === 'audio') {
-        contentHtml += `<audio controls class="mt-2"><source src="${msg.data}" type="audio/wav">Your browser does not support the audio element.</audio>`;
+        contentHtml += `<audio controls class="mt-2"><source src="${msg.data}" type="audio/wav">Unsupported</audio>`;
     }
-    if (msg.replyTo) {
-        contentHtml += `<p class="text-gray-400 text-sm mt-1">Replying to: ${msg.replyTo}</p>`;
-    }
-    div.innerHTML = contentHtml;
+    div.innerHTML = contentHtml + '<button class="reply-btn">Reply</button>';
     messagesDiv.appendChild(div);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
@@ -43,55 +41,55 @@ function displayMessage(msg) {
 // Send message
 document.getElementById('sendBtn').addEventListener('click', sendMessage);
 document.getElementById('messageInput').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendMessage();
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
 });
 
 function sendMessage() {
     const input = document.getElementById('messageInput');
     const content = input.value.trim();
-    if (content || (document.getElementById('imageInput').files[0] && !audioChunks.length)) {
+    const imageInput = document.getElementById('imageInput');
+    if (content || imageInput.files[0] || audioChunks.length) {
         const channel = currentDM || currentChannel;
-        if (document.getElementById('imageInput').files[0]) {
+        const replyTo = input.value.match(/^@(\w+)\s/)?.[1];
+        if (imageInput.files[0]) {
             const reader = new FileReader();
-            reader.onload = (e) => {
-                socket.emit('sendMessage', { channel, content: '', sender: user.username, type: 'image', data: e.target.result });
-            };
-            reader.readAsDataURL(document.getElementById('imageInput').files[0]);
-            document.getElementById('imageInput').value = '';
+            reader.onload = (e) => socket.emit('sendMessage', { channel, content: '', sender: user.username, type: 'image', data: e.target.result, replyTo });
+            reader.readAsDataURL(imageInput.files[0]);
+            imageInput.value = '';
+        } else if (audioChunks.length) {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+            const reader = new FileReader();
+            reader.onload = (e) => socket.emit('sendMessage', { channel, content: '', sender: user.username, type: 'audio', data: e.target.result, replyTo });
+            reader.readAsDataURL(audioBlob);
+            audioChunks = [];
         } else {
-            socket.emit('sendMessage', { channel, content, sender: user.username, type: 'text' });
+            socket.emit('sendMessage', { channel, content, sender: user.username, type: 'text', replyTo });
         }
         input.value = '';
-    } else if (audioChunks.length) {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            socket.emit('sendMessage', { channel: currentDM || currentChannel, content: '', sender: user.username, type: 'audio', data: e.target.result });
-            audioChunks = [];
-        };
-        reader.readAsDataURL(audioBlob);
     }
 }
 
 // Voice notes
 document.getElementById('voiceBtn').addEventListener('click', () => {
     if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                mediaRecorder = new MediaRecorder(stream);
-                mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-                mediaRecorder.onstop = () => {
-                    stream.getTracks().forEach(track => track.stop());
-                    sendMessage();
-                };
-                mediaRecorder.start();
-                document.getElementById('voiceBtn').classList.add('bg-red-600');
-                document.getElementById('voiceBtn').classList.remove('bg-green-600', 'hover:bg-green-700');
-            });
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                stream.getTracks().forEach(track => track.stop());
+                sendMessage();
+            };
+            mediaRecorder.start();
+            document.getElementById('voiceBtn').classList.add('bg-red-600', 'hover:bg-red-700');
+            document.getElementById('voiceBtn').classList.remove('bg-green-600');
+        }).catch(err => console.error('Mic access denied:', err));
     } else if (mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
-        document.getElementById('voiceBtn').classList.remove('bg-red-600');
-        document.getElementById('voiceBtn').classList.add('bg-green-600', 'hover:bg-green-700');
+        document.getElementById('voiceBtn').classList.remove('bg-red-600', 'hover:bg-red-700');
+        document.getElementById('voiceBtn').classList.add('bg-green-600');
     }
 });
 
@@ -108,45 +106,45 @@ document.querySelectorAll('.channel-btn').forEach(btn => {
     });
 });
 
-// Load DMs and handle live updates
+// Load DMs
 async function loadDMs() {
     const dmList = document.getElementById('dmList');
     dmList.innerHTML = '';
     try {
         const response = await fetch('/users');
         const users = await response.json();
-        if (!users || !Array.isArray(users)) {
+        if (Array.isArray(users)) {
+            users.forEach(u => {
+                if (u !== user.username) {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<button class="channel-btn w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600"><i class="fas fa-user mr-2"></i>${u}</button>`;
+                    li.querySelector('button').addEventListener('click', () => {
+                        currentDM = u;
+                        currentChannel = null;
+                        const dmChannel = [user.username, u].sort().join('_');
+                        document.getElementById('currentChannel').textContent = `@${u}`;
+                        socket.emit('joinChannel', { channel: `DM_${dmChannel}`, username: user.username });
+                    });
+                    dmList.appendChild(li);
+                }
+            });
+        } else {
             console.error('Invalid users response:', users);
-            return;
         }
-        users.forEach(u => {
-            if (u !== user.username) {
-                const li = document.createElement('li');
-                li.innerHTML = `<button class="w-full text-left p-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition duration-200"><i class="fas fa-user mr-2"></i>${u}</button>`;
-                li.querySelector('button').addEventListener('click', () => {
-                    currentDM = u;
-                    currentChannel = null;
-                    const dmChannel = [user.username, u].sort().join('_');
-                    document.getElementById('currentChannel').textContent = `@${u}`;
-                    socket.emit('joinChannel', { channel: `DM_${dmChannel}`, username: user.username });
-                });
-                dmList.appendChild(li);
-            }
-        });
     } catch (err) {
-        console.error('Error loading DMs:', err);
+        console.error('Fetch error:', err);
     }
 }
 
-// Live message updates
+// Live updates
 socket.on('newMessage', (msg) => {
-    if ((currentDM && msg.channel === `DM_${[user.username, currentDM].sort().join('_')}`) || 
+    if ((currentDM && msg.channel === `DM_${[user.username, currentDM].sort().join('_')}`) ||
         (!currentDM && msg.channel === currentChannel)) {
         displayMessage(msg);
     }
 });
 
-// Reply functionality
+// Reply handling
 document.getElementById('messages').addEventListener('click', (e) => {
     if (e.target.classList.contains('reply-btn')) {
         const msg = e.target.closest('.message');

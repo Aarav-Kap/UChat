@@ -1,7 +1,7 @@
 {
-    "name": "uchat-simple",
+    "name": "uchat-reworked",
     "version": "1.0.0",
-    "description": "Simple chat app with main channel and DMs",
+    "description": "Reworked chat app with main channel, DMs, voice notes, images, and replies",
     "main": "server.js",
     "scripts": {
         "start": "node server.js",
