@@ -24,12 +24,13 @@ setUsername();
 // Update color
 document.getElementById('colorSelect').addEventListener('change', (e) => {
     const color = e.target.value;
-    users.set(username, { color });
+    users.set(username, { color }); // Update local users map (for consistency)
     socket.emit('joinChannel', { channel: currentChannel, username, color });
 });
 
 // Load messages
 socket.on('loadMessages', (messages) => {
+    console.log('Loaded messages:', messages.length);
     const messagesDiv = document.getElementById('messages');
     messagesDiv.innerHTML = '';
     messages.forEach(msg => displayMessage(msg));
@@ -41,7 +42,7 @@ function displayMessage(msg) {
     const messagesDiv = document.getElementById('messages');
     const div = document.createElement('div');
     div.className = `message ${msg.sender === username ? 'own' : ''}`;
-    div.style.backgroundColor = msg.color;
+    div.style.backgroundColor = msg.color || '#374151';
     let contentHtml = `<div class="message-header">
         <span>${msg.sender}</span>
         <span class="message-timestamp">${msg.timestamp.toLocaleTimeString()}</span>
@@ -116,12 +117,12 @@ document.querySelectorAll('.channel-btn').forEach(btn => {
     });
 });
 
-// Load DMs (based on connected users)
-function loadDMs() {
+// Load DMs
+function loadDMs(userList) {
     const dmList = document.getElementById('dmList');
     dmList.innerHTML = '';
-    const connectedUsers = Array.from(users.keys()).filter(u => u !== username);
-    connectedUsers.forEach(u => {
+    const otherUsers = userList.filter(u => u !== username);
+    otherUsers.forEach(u => {
         const li = document.createElement('li');
         li.innerHTML = `<button class="channel-btn w-full text-left p-2 bg-gray-700 rounded hover:bg-gray-600"><i class="fas fa-user mr-2"></i>${u}</button>`;
         li.querySelector('button').addEventListener('click', () => {
@@ -138,6 +139,7 @@ function loadDMs() {
 
 // Live updates
 socket.on('newMessage', (msg) => {
+    console.log('Received message:', msg);
     if ((currentDM && msg.channel === `DM_${[username, currentDM].sort().join('_')}`) ||
         (!currentDM && msg.channel === currentChannel)) {
         displayMessage(msg);
@@ -145,13 +147,19 @@ socket.on('newMessage', (msg) => {
 });
 
 socket.on('userJoin', ({ username: newUser, color }) => {
-    loadDMs();
+    console.log(`${newUser} joined with color ${color}`);
+    loadDMs(Array.from(users.keys()));
+});
+
+socket.on('updateUsers', (userList) => {
+    console.log('Updated users:', userList);
+    loadDMs(userList);
 });
 
 // Leave chat
 document.getElementById('leaveBtn').addEventListener('click', () => {
     username = '';
     document.getElementById('username').textContent = '';
-    socket.emit('disconnect', username);
+    socket.emit('disconnect');
     setUsername();
 });
