@@ -15,8 +15,8 @@ const messages = { General: [], DMs: {} }; // General: [], DMs: { user1_user2: [
 
 // Middleware
 app.use(express.static(__dirname));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' })); // Increased limit for images/audio
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(session({
     secret: 'UChatSecret2025',
     resave: false,
@@ -98,15 +98,15 @@ io.on('connection', (socket) => {
         console.log(`${username} joined ${channel}`);
     });
 
-    socket.on('sendMessage', ({ channel, content, sender }) => {
-        const message = { sender, content, timestamp: new Date() };
+    socket.on('sendMessage', ({ channel, content, sender, type = 'text', data }) => {
+        const message = { sender, content, timestamp: new Date(), type, data };
         if (channel.startsWith('DM_')) {
             if (!messages.DMs[channel]) messages.DMs[channel] = [];
             messages.DMs[channel].push(message);
         } else {
             messages[channel].push(message);
         }
-        io.to(channel).emit('newMessage', message); // Broadcast to all in channel
+        io.to(channel).emit('newMessage', message);
     });
 });
 
